@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { showAlert } from '../stores/useDialogStore';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { FileText, Download, BarChart2, PieChart as PieChartIcon, Activity, TrendingUp, Package, Users } from 'lucide-react';
@@ -180,7 +181,7 @@ export function Reports() {
     };
 
     const handleExport = () => {
-        alert("La fonction d'exportation PDF sera disponible dans la prochaine mise à jour.");
+        showAlert("La fonction d'exportation PDF sera disponible dans la prochaine mise à jour.", 'info');
     };
 
     return (

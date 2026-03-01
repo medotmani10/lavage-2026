@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { db } from '../lib/db';
 import { queueOperation } from '../lib/sync';
+import { showAlert, showConfirm } from '../stores/useDialogStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -80,7 +81,7 @@ export function Employees() {
   });
 
   const handleDelete = async (employee: Employee) => {
-    if (!confirm(t('messages.deleteConfirm'))) return;
+    if (!(await showConfirm(t('messages.deleteConfirm')))) return;
 
     await queueOperation('employees', 'UPDATE', { ...employee, active: false });
   };
@@ -175,7 +176,7 @@ export function Employees() {
       ) : (
         <Card className="overflow-hidden p-0 border-[var(--border)]">
           <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse min-w-[800px]">
               <thead>
                 <tr className="bg-[var(--bg-panel)] border-b border-[var(--border)] uppercase text-[10px] tracking-wider text-[var(--text-secondary)] font-bold">
                   <th className="px-6 py-4">{t('employee.fullName')}</th>
@@ -292,7 +293,7 @@ function EmployeeModal({ employee, userOptions, onClose }: EmployeeModalProps) {
     }
 
     if (!finalFullName) {
-      alert(t('employee.fullNameRequired', 'Le nom complet est obligatoire.'));
+      showAlert(t('employee.fullNameRequired', 'Le nom complet est obligatoire.'), 'warning');
       setIsLoading(false);
       return;
     }
@@ -324,7 +325,7 @@ function EmployeeModal({ employee, userOptions, onClose }: EmployeeModalProps) {
       onClose();
     } catch (error) {
       console.error(error);
-      alert(t('messages.saveError'));
+      showAlert(t('messages.saveError'), 'error');
     } finally {
       setIsLoading(false);
     }

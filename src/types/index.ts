@@ -131,8 +131,16 @@ export type TicketPriority = 'normal' | 'priority' | 'vip';
 export interface QueueTicket {
   id: string;
   ticket_number: string;
-  customer_id: string;
-  vehicle_id: string;
+  customer_id: string | null;
+  vehicle_id: string | null;
+  // Guest fields (kiosk visitors not yet converted)
+  guest_name?: string | null;
+  guest_phone?: string | null;
+  requested_service?: string | null;
+  // Vidange tracking
+  current_mileage?: number | null;
+  next_oil_change?: number | null;
+  filters_changed?: string[] | null;
   service_ids: string[];
   product_ids: { product_id: string; quantity: number }[];
   status: TicketStatus;

@@ -1,7 +1,9 @@
+import { showAlert } from '../stores/useDialogStore';
+
 export const printTicket = (ticket: any, customer: any, vehicle: any, carsAhead: number = 0) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    alert('Veuillez autoriser les fenêtres contextuelles (pop-ups) pour imprimer le ticket.');
+    showAlert('Veuillez autoriser les fenêtres contextuelles (pop-ups) pour imprimer le ticket.', 'warning');
     return;
   }
 
@@ -82,6 +84,10 @@ export const printTicket = (ticket: any, customer: any, vehicle: any, carsAhead:
         <div class="row">
           <span><strong>TICKET N°:</strong></span>
           <span><strong>${ticket.ticket_number || 'N/A'}</strong></span>
+        </div>
+        <div class="row">
+          <span>Catégorie:</span>
+          <span><strong>${ticket.requested_service ? ticket.requested_service.toUpperCase() : 'LAVAGE'}</strong></span>
         </div>
         <div class="row">
           <span>Statut:</span>

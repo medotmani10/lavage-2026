@@ -1,7 +1,11 @@
 import { useTranslation } from 'react-i18next';
+import { useState } from 'react';
 import { Button } from '../components/Button';
-import { Clock, User, Car, CheckCircle, PlayCircle, AlertCircle } from 'lucide-react';
+import { showConfirm } from '../stores/useDialogStore';
+import { Clock, User, Car, PlayCircle, AlertCircle, CreditCard } from 'lucide-react';
 import type { QueueTicket, TicketStatus } from '../types';
+import { PaymentModal } from './PaymentModal';
+import { usePOSStore } from '../stores/usePOSStore';
 
 interface TicketCardProps {
   ticket: QueueTicket;
@@ -10,6 +14,15 @@ interface TicketCardProps {
 
 export function TicketCard({ ticket, onUpdateStatus }: TicketCardProps) {
   const { t } = useTranslation();
+  const { setCustomer, setVehicle } = usePOSStore();
+  const [showPayment, setShowPayment] = useState(false);
+
+  const openPayment = () => {
+    // Load customer & vehicle into POS store so PaymentModal has access
+    if (ticket.customer_id) setCustomer(ticket.customer_id);
+    if (ticket.vehicle_id) setVehicle(ticket.vehicle_id);
+    setShowPayment(true);
+  };
 
   const getStatusBadge = () => {
     switch (ticket.status) {
@@ -48,6 +61,17 @@ export function TicketCard({ ticket, onUpdateStatus }: TicketCardProps) {
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-bold text-white text-base">{ticket.ticket_number ? `#${ticket.ticket_number}` : '#...'}</span>
+
+            {ticket.requested_service === 'lavage' && (
+              <span className="badge bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[10px]">Lavage</span>
+            )}
+            {ticket.requested_service === 'vidange' && (
+              <span className="badge bg-orange-500/20 text-orange-400 border border-orange-500/30 text-[10px]">Vidange</span>
+            )}
+            {ticket.requested_service === 'pneumatique' && (
+              <span className="badge bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[10px]">Pneumatique</span>
+            )}
+
             {ticket.priority !== 'normal' && (
               <span className={`badge ${ticket.priority === 'vip' ? 'badge-vip' : 'badge-pending'} text-[10px]`}>
                 {t(`queue.priority.${ticket.priority}`)}
@@ -115,8 +139,8 @@ export function TicketCard({ ticket, onUpdateStatus }: TicketCardProps) {
           <Button
             variant="danger"
             size="sm"
-            onClick={() => {
-              if (window.confirm(t('queue.confirmCancel'))) {
+            onClick={async () => {
+              if (await showConfirm(t('queue.confirmCancel'))) {
                 onUpdateStatus(ticket.id, 'cancelled');
               }
             }}
@@ -132,11 +156,18 @@ export function TicketCard({ ticket, onUpdateStatus }: TicketCardProps) {
           variant="success"
           size="sm"
           className="w-full mt-auto"
-          onClick={() => onUpdateStatus(ticket.id, 'completed')}
+          onClick={openPayment}
         >
-          <CheckCircle className="w-4 h-4" />
-          <span>Terminer Service</span>
+          <CreditCard className="w-4 h-4" />
+          <span>Encaisser & Terminer</span>
         </Button>
+      )}
+
+      {showPayment && (
+        <PaymentModal
+          ticketId={ticket.id}
+          onClose={() => setShowPayment(false)}
+        />
       )}
 
       {ticket.status === 'completed' && (

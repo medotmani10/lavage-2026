@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { db } from '../lib/db';
 import { queueOperation } from '../lib/sync';
+import { showAlert, showConfirm } from '../stores/useDialogStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Plus, Search, User, Mail, MapPin, Edit2, Trash2, Car, History } from 'lucide-react';
 import { CustomerHistoryPanel } from './CustomerHistoryPanel';
+import { CustomerVehiclesPanel } from './CustomerVehiclesPanel';
 import type { Customer } from '../types';
 
 export function Customers() {
@@ -16,6 +18,7 @@ export function Customers() {
   const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
+  const [vehiclesCustomer, setVehiclesCustomer] = useState<Customer | null>(null);
 
   const customersData = useLiveQuery(async () => {
     const all = await db.customers.toArray();
@@ -35,7 +38,7 @@ export function Customers() {
   });
 
   const handleDelete = async (customer: Customer) => {
-    if (!confirm(t('messages.deleteConfirm'))) return;
+    if (!(await showConfirm(t('messages.deleteConfirm')))) return;
 
     await queueOperation('customers', 'UPDATE', { ...customer, active: false });
   };
@@ -101,6 +104,7 @@ export function Customers() {
                 handleDelete(customer as any);
               }}
               onClick={() => setHistoryCustomer(customer as any)}
+              onManageVehicles={() => setVehiclesCustomer(customer as any)}
             />
           ))}
         </div>
@@ -122,6 +126,12 @@ export function Customers() {
         isOpen={!!historyCustomer}
         onClose={() => setHistoryCustomer(null)}
       />
+
+      <CustomerVehiclesPanel
+        customer={vehiclesCustomer!}
+        isOpen={!!vehiclesCustomer}
+        onClose={() => setVehiclesCustomer(null)}
+      />
     </div>
   );
 }
@@ -131,13 +141,11 @@ interface CustomerCardProps {
   onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
   onClick: () => void;
+  onManageVehicles: () => void;
 }
 
-import { useNavigate } from 'react-router-dom';
-
-function CustomerCard({ customer, onEdit, onDelete, onClick }: CustomerCardProps) {
+function CustomerCard({ customer, onEdit, onDelete, onClick, onManageVehicles }: CustomerCardProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
 
   return (
     <Card className="group hover:-translate-y-1 transition-all duration-300 cursor-pointer border-[var(--border)] hover:border-primary-500/50 hover:shadow-[var(--shadow-glow-orange)] p-0 overflow-hidden">
@@ -203,7 +211,7 @@ function CustomerCard({ customer, onEdit, onDelete, onClick }: CustomerCardProps
           <button
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/vehicles?customer=${customer.id}`)
+              onManageVehicles();
             }}
             className="flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-wider text-primary-400 bg-primary-500/10 hover:bg-primary-500/20 py-2 rounded-lg transition-colors border border-primary-500/20"
           >
@@ -270,7 +278,7 @@ function CustomerModal({ customer, onClose }: CustomerModalProps) {
       onClose();
     } catch (error) {
       console.error(error);
-      alert(t('messages.saveError'));
+      showAlert(t('messages.saveError'), 'error');
     } finally {
       setIsLoading(false);
     }

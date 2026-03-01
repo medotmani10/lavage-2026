@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   DollarSign,
   ShoppingCart,
-  Car,
   ArrowRight,
   Activity,
 } from 'lucide-react';
@@ -32,21 +31,21 @@ export function Dashboard() {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
-      const todayTickets = tickets.filter(t => new Date(t.created_at) >= todayStart);
+      // Use completed_at for accurate daily revenue (not created_at)
+      const completedTickets = tickets.filter(t => t.status === 'completed');
+      const todayCompleted = completedTickets.filter(t => t.completed_at && new Date(t.completed_at) >= todayStart);
       const recentActivity = tickets.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
 
       const firstDayOfMonth = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
-      const monthlyTickets = tickets.filter(t => new Date(t.created_at) >= firstDayOfMonth);
+      const monthlyCompleted = completedTickets.filter(t => t.completed_at && new Date(t.completed_at) >= firstDayOfMonth);
 
       return {
-        daily_revenue: todayTickets
-          .filter(t => t.status === 'completed')
-          .reduce((s, t) => s + (t.total_amount || 0), 0),
-        monthly_revenue: monthlyTickets
-          .filter(t => t.status === 'completed')
-          .reduce((s, t) => s + (t.total_amount || 0), 0),
+        // Bug #1 fix: use paid_amount (cash drawer) not total_amount (which includes credit)
+        // Bug #8 fix: filter by completed_at not created_at
+        daily_revenue: todayCompleted.reduce((s, t) => s + (t.paid_amount || 0), 0),
+        monthly_revenue: monthlyCompleted.reduce((s, t) => s + (t.paid_amount || 0), 0),
         current_queue: tickets.filter(t => ['pending', 'in_progress'].includes(t.status)).length,
-        completed_today: todayTickets.filter(t => t.status === 'completed').length,
+        completed_today: todayCompleted.length,
         total_customers: customersCount || 0,
         low_stock: stockLowCount || 0,
         pending_debts: 0,
@@ -140,7 +139,6 @@ export function Dashboard() {
     { label: "Nouveau ticket", icon: ShoppingCart, href: '/queue?new=true', iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', border: 'border-primary-500/20' },
     { label: "File d'attente", icon: Clock, href: '/queue', iconBg: 'bg-blue-500/10', iconColor: 'text-blue-500', border: 'border-blue-500/20' },
     { label: "Ajouter client", icon: Users, href: '/customers', iconBg: 'bg-success-500/10', iconColor: 'text-success-500', border: 'border-success-500/20' },
-    { label: "Vehicles", icon: Car, href: '/vehicles', iconBg: 'bg-purple-500/10', iconColor: 'text-purple-500', border: 'border-purple-500/20' },
   ];
 
   return (

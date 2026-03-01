@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueueStore } from '../stores/useQueueStore';
+import { showAlert } from '../stores/useDialogStore';
 import { Button } from '../components/Button';
 import { Select } from '../components/Select';
 import { Input } from '../components/Input';
@@ -24,6 +25,7 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [priority, setPriority] = useState<'normal' | 'priority' | 'vip'>('normal');
   const [notes, setNotes] = useState('');
+  const [requestedService, setRequestedService] = useState<'lavage' | 'vidange' | 'pneumatique'>('lavage');
 
   const customers = useLiveQuery(async () => {
     const all = await db.customers.toArray();
@@ -66,7 +68,7 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
       const existingCustomer = customers.find(c => c.phone === newCustomerPhone);
 
       if (existingCustomer) {
-        alert(`Un client avec ce numéro de téléphone existe déjà: ${existingCustomer.full_name}`);
+        showAlert(`Un client avec ce numéro de téléphone existe déjà: ${existingCustomer.full_name}`, 'warning');
         return;
       }
     }
@@ -89,7 +91,7 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
       setNewCustomerPhone('');
     } catch (error: any) {
       console.error('Customer insert error:', error);
-      alert('Erreur lors de l\'ajout du client: ' + error.message);
+      showAlert(`Erreur lors de l'ajout du client: ${error.message}`, 'error');
     }
   };
 
@@ -119,7 +121,7 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
       setNewVehicleYear(new Date().getFullYear().toString());
     } catch (error: any) {
       console.error('Vehicle insert error:', error);
-      alert('Erreur lors de l\'ajout du véhicule: ' + error.message);
+      showAlert(`Erreur lors de l'ajout du véhicule: ${error.message}`, 'error');
     }
   };
 
@@ -136,6 +138,7 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
       total_amount: 0,
       subtotal: 0,
       status: 'pending',
+      requested_service: requestedService,
     });
 
     if (ticket) {
@@ -185,6 +188,31 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto scrollbar-thin scrollbar-thumb-gray">
+
+          {/* Service Category */}
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-[var(--text-secondary)]">Catégorie de Service</label>
+            <div className="flex gap-2 p-1 bg-[var(--bg-panel)] rounded-xl border border-[var(--border)] overflow-hidden">
+              {(() => {
+                const categories = [
+                  { id: 'lavage', label: 'Lavage', style: 'bg-blue-500/20 text-blue-400 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.2)]' },
+                  { id: 'vidange', label: 'Vidange', style: 'bg-orange-500/20 text-orange-400 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.2)]' },
+                  { id: 'pneumatique', label: 'Pneumatique', style: 'bg-purple-500/20 text-purple-400 border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.2)]' }
+                ];
+                return categories.map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setRequestedService(cat.id as any)}
+                    className={`flex-1 py-3 text-sm font-bold rounded-lg border transition-all duration-300 ${requestedService === cat.id ? cat.style : 'border-transparent text-[var(--text-muted)] hover:bg-[var(--bg-base)]'}`}
+                  >
+                    {cat.label}
+                  </button>
+                ));
+              })()}
+            </div>
+          </div>
+
           {/* Customer */}
           {isAddingCustomer ? (
             <div className="p-4 bg-[var(--bg-panel)] rounded-xl border border-primary-500/30 space-y-3">

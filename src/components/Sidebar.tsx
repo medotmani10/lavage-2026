@@ -5,7 +5,6 @@ import { supabase } from '../lib/supabase';
 import {
   LayoutDashboard,
   Users,
-  Car,
   Package,
   Truck,
   UserCog,
@@ -16,6 +15,7 @@ import {
   ShoppingCart,
   LogOut,
   Wrench,
+  X,
 } from 'lucide-react';
 import type { UserRole } from '../types';
 
@@ -33,7 +33,6 @@ const navigation: NavItem[] = [
   { name: 'queue', href: '/queue', icon: Ticket, pageKey: 'queue' },
   { name: 'pos', href: '/pos', icon: ShoppingCart, pageKey: 'pos' },
   { name: 'customers', href: '/customers', icon: Users, pageKey: 'customers' },
-  { name: 'vehicles', href: '/vehicles', icon: Car, pageKey: 'vehicles' },
   { name: 'services', href: '/services', icon: Wrench, pageKey: 'services' },
   { name: 'inventory', href: '/inventory', icon: Package, pageKey: 'inventory' },
   { name: 'suppliers', href: '/suppliers', icon: Truck, pageKey: 'suppliers' },
@@ -43,7 +42,12 @@ const navigation: NavItem[] = [
   { name: 'settings', href: '/settings', icon: Settings, pageKey: 'settings', minRole: ['admin'] },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { t } = useTranslation();
   const { user, hasRole, logout } = useAuthStore();
   const navigate = useNavigate();
@@ -71,16 +75,32 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="fixed inset-y-0 left-0 flex flex-col no-print bg-[var(--bg-base)] border-r border-[var(--border)] z-50 w-[var(--sidebar-w)]">
+    <aside className={`
+      fixed inset-y-0 left-0 flex flex-col no-print bg-[var(--bg-base)] border-r border-[var(--border)] z-50 w-[var(--sidebar-w)]
+      transition-transform duration-300 ease-in-out
+      ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+    `}>
       {/* ── Logo ── */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--border)]">
-        <div className="flex items-center justify-center rounded-xl w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 shadow-[var(--shadow-glow-orange)]">
-          <Wrench className="w-5 h-5 text-white" />
+      <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center rounded-xl w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 shadow-[var(--shadow-glow-orange)]">
+            <Wrench className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-sm font-bold text-white leading-tight">Lavage & Vidange</h1>
+            <p className="text-xs font-medium text-[var(--text-muted)]">ERP 2026</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-sm font-bold text-white leading-tight">Lavage & Vidange</h1>
-          <p className="text-xs font-medium text-[var(--text-muted)]">ERP 2026</p>
-        </div>
+
+        {/* Mobile Close Button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="md:hidden p-2 text-[var(--text-muted)] hover:text-white rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* ── Navigation ── */}
@@ -89,6 +109,9 @@ export function Sidebar() {
           <NavLink
             key={item.name}
             to={item.href}
+            onClick={() => {
+              if (onClose) onClose();
+            }}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative
               ${isActive
@@ -108,33 +131,35 @@ export function Sidebar() {
       </nav>
 
       {/* ── User Footer ── */}
-      {user && (
-        <div className="p-3 border-t border-[var(--border)]">
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[var(--bg-panel)] transition-all duration-200 group relative">
-            {/* Avatar */}
-            <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white bg-gradient-to-br from-primary-500 to-primary-600">
-              {user.full_name?.charAt(0).toUpperCase() || 'U'}
-            </div>
+      {
+        user && (
+          <div className="p-3 border-t border-[var(--border)]">
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[var(--bg-panel)] transition-all duration-200 group relative">
+              {/* Avatar */}
+              <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white bg-gradient-to-br from-primary-500 to-primary-600">
+                {user.full_name?.charAt(0).toUpperCase() || 'U'}
+              </div>
 
-            {/* Info */}
-            <div className="flex-1 min-w-0 pr-6">
-              <p className="text-sm font-semibold text-white truncate">{user.full_name}</p>
-              <p className="text-[10px] font-semibold text-[var(--text-muted)] mt-0.5 capitalize px-1.5 py-0.5 rounded-md bg-[var(--bg-hover)] inline-block">
-                {t(`role.${user.role}`)}
-              </p>
-            </div>
+              {/* Info */}
+              <div className="flex-1 min-w-0 pr-6">
+                <p className="text-sm font-semibold text-white truncate">{user.full_name}</p>
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] mt-0.5 capitalize px-1.5 py-0.5 rounded-md bg-[var(--bg-hover)] inline-block">
+                  {t(`role.${user.role}`)}
+                </p>
+              </div>
 
-            {/* Logout */}
-            <button
-              onClick={handleLogout}
-              className="absolute right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-danger-500/20"
-              title="Déconnexion"
-            >
-              <LogOut className="w-4 h-4 text-danger-400" />
-            </button>
+              {/* Logout */}
+              <button
+                onClick={handleLogout}
+                className="absolute right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-danger-500/20"
+                title="Déconnexion"
+              >
+                <LogOut className="w-4 h-4 text-danger-400" />
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
     </aside>
   );
 }

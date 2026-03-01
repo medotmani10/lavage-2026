@@ -7,6 +7,7 @@ export interface CartItem {
   price: number;
   quantity: number;
   subtotal: number;
+  category?: string; // e.g. 'lavage', 'vidange', 'pneumatique'
 }
 
 interface CartState {
@@ -17,12 +18,12 @@ interface CartState {
   notes: string;
   taxRate: number;
   discount: number;
-  
+
   // Calculated values
   subtotal: number;
   taxAmount: number;
   total: number;
-  
+
   // Actions
   addItem: (item: Omit<CartItem, 'subtotal'>) => void;
   removeItem: (itemId: string, type: 'service' | 'product') => void;
@@ -58,7 +59,7 @@ export const usePOSStore = create<CartState>((set, get) => ({
       // Update existing item quantity
       const updatedItems = [...currentItems];
       updatedItems[existingIndex].quantity += item.quantity;
-      updatedItems[existingIndex].subtotal = 
+      updatedItems[existingIndex].subtotal =
         updatedItems[existingIndex].price * updatedItems[existingIndex].quantity;
       set({ items: updatedItems });
     } else {
@@ -73,7 +74,7 @@ export const usePOSStore = create<CartState>((set, get) => ({
         ],
       });
     }
-    
+
     get().calculateTotals();
   },
 
@@ -125,7 +126,7 @@ export const usePOSStore = create<CartState>((set, get) => ({
 
   calculateTotals: () => {
     const { items, taxRate, discount } = get();
-    
+
     const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
     const taxAmount = subtotal * (taxRate / 100);
     const total = subtotal + taxAmount - discount;

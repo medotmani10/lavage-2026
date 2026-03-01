@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 import { usePOSStore } from '../stores/usePOSStore';
 import { db } from '../lib/db';
@@ -6,20 +6,23 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Search, Clock, PlusCircle } from 'lucide-react';
 import { Input } from '../components/Input';
 
-interface Service {
-  id: string;
-  name: string;
-  price: number;
-  duration_minutes: number;
-  commission_rate: number;
+
+interface ServicesPanelProps {
+  ticketCategory?: 'lavage' | 'vidange' | 'pneumatique';
 }
 
-export function ServicesPanel() {
+export function ServicesPanel({ ticketCategory }: ServicesPanelProps) {
 
   const { addItem } = usePOSStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'lavage' | 'vidange' | 'pneumatique'>('lavage');
+
+  useEffect(() => {
+    if (ticketCategory) {
+      setActiveTab(ticketCategory);
+    }
+  }, [ticketCategory]);
 
   const services = useLiveQuery(async () => {
     const all = await db.services.toArray();
@@ -31,16 +34,18 @@ export function ServicesPanel() {
   const filteredServices = (services || []).filter((service: any) => {
     const name = service.name;
     const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
+    const matchesCategory = service.category === activeTab;
+    return matchesSearch && matchesCategory;
   });
 
-  const handleAddService = (service: Service) => {
+  const handleAddService = (service: any) => {
     addItem({
       id: service.id,
       type: 'service',
       name: service.name,
       price: service.price,
       quantity: 1,
+      category: service.category,
     });
   };
 

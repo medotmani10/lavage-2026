@@ -1,5 +1,6 @@
 import { db } from './db';
 import { supabase } from './supabase';
+import { useNotificationStore } from '../stores/useNotificationStore';
 
 let isSyncing = false;
 let isPulling = false;
@@ -18,6 +19,14 @@ export async function pushChanges() {
 
         for (const item of queue) {
             try {
+                // ── Auto-fix known schema changes ──
+                if (item.table === 'queue_tickets' && item.payload) {
+                    if ('amount_paid' in item.payload) {
+                        item.payload.paid_amount = item.payload.amount_paid;
+                        delete item.payload.amount_paid;
+                    }
+                }
+
                 if (item.operation === 'INSERT') {
                     // @ts-ignore: generic table insert
                     const { error } = await supabase.from(item.table as any).insert([item.payload]);
@@ -43,9 +52,15 @@ export async function pushChanges() {
 
                 // Remove from queue after success
                 if (item.id) await db.sync_queue.delete(item.id);
-            } catch (err) {
+            } catch (err: any) {
                 console.error('Failed to sync item:', item, err);
-                // Break out to avoid syncing later items if earlier ones fail (maintain order)
+                // If it's a schema mismatch (e.g., column doesn't exist), delete to unblock queue
+                if (item.id && (err?.code?.startsWith('PGRST') || err?.status === 400)) {
+                    console.warn(`🗑️ Discarding invalid sync item ${item.id} to unblock queue!`, err);
+                    await db.sync_queue.delete(item.id);
+                    continue; // Continue to next item without breaking
+                }
+                // Break out to avoid syncing later items if earlier ones fail (maintain order for valid items)
                 break;
             }
         }
@@ -152,21 +167,32 @@ export function setupRealtimeSync() {
 
     // Helper to process incoming realtime payloads
     const processPayload = async (payload: any) => {
+        console.log('Realtime payload received:', payload);
         const { table, eventType, new: newRec, old: oldRec } = payload;
 
         // Skip tables we don't sync to Dexie
-        if (!(table in db)) return;
+        const dexieTable = (db as any)[table];
+        if (!dexieTable) {
+            console.log(`Realtime: Table "${table}" not found in Dexie schema, skipping local sync.`);
+
+            // SPECIAL CASE: Even if not in Dexie, we might want notifications for some tables
+            if (table.toLowerCase().includes('queue_tickets')) {
+                // proceed for notifications
+            } else {
+                return;
+            }
+        }
 
         try {
             let changed = false;
             if (eventType === 'INSERT' || eventType === 'UPDATE') {
                 if (newRec && Object.keys(newRec).length > 0) {
-                    await (db as any)[table].put(newRec);
+                    if (dexieTable) await dexieTable.put(newRec);
                     changed = true;
                 }
             } else if (eventType === 'DELETE') {
                 if (oldRec && oldRec.id) {
-                    await (db as any)[table].delete(oldRec.id);
+                    if (dexieTable) await dexieTable.delete(oldRec.id);
                     changed = true;
                 }
             }
@@ -174,21 +200,49 @@ export function setupRealtimeSync() {
             // Notify React components to re-fetch if they rely on manual store queries
             if (changed) {
                 window.dispatchEvent(new CustomEvent('dexie-sync-update'));
+
+                // TRIGGER NOTIFICATION: If it's a new ticket
+                const isTicketTable = table.toLowerCase().includes('queue_tickets');
+                const isInsert = eventType.toUpperCase() === 'INSERT';
+
+                if (isTicketTable && isInsert && newRec) {
+                    try {
+                        console.log('🔔 Triggering notification for new ticket:', newRec.ticket_number);
+                        useNotificationStore.getState().addNotification({
+                            type: 'ticket_new',
+                            title: 'Nouveau Ticket Kiosque',
+                            message: `Le ticket #${newRec.ticket_number || 'K???'} vient d'être créé.`,
+                            metadata: {
+                                ticket_id: newRec.id,
+                                ticket_number: newRec.ticket_number
+                            }
+                        });
+                    } catch (notifErr) {
+                        console.error('❌ Failed to add notification to store:', notifErr);
+                    }
+                }
             }
         } catch (err) {
             console.error('Error applying realtime update to Dexie:', err);
         }
     };
 
+    console.log('Setting up Supabase Realtime subscription...');
     channel
         .on(
             'postgres_changes',
             { event: '*', schema: 'public' },
-            (payload) => processPayload(payload)
+            (payload) => {
+                console.log('Postgres change overhead:', payload.table, payload.eventType);
+                processPayload(payload);
+            }
         )
         .subscribe((status) => {
+            console.log('Supabase Realtime subscription status:', status);
             if (status === 'SUBSCRIBED') {
                 console.log('Successfully subscribed to Supabase Realtime');
+            } else if (status === 'CHANNEL_ERROR') {
+                console.error('Supabase Realtime Channel Error: Check RLS and publication settings.');
             }
         });
 

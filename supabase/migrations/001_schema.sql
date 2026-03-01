@@ -1,4 +1,51 @@
 -- ============================================================
+-- CLEAN SCHEMA MASTER FILE
+-- ============================================================
+
+-- --- Source: 000_verify_setup.sql ---
+-- ============================================================
+-- SETUP VERIFICATION SCRIPT
+-- Run this to check if your database is properly configured
+-- ============================================================
+
+-- Check if tables exist
+SELECT 
+  'Tables Check' as step,
+  COUNT(*) as table_count
+FROM information_schema.tables 
+WHERE table_schema = 'public' 
+  AND table_type = 'BASE TABLE';
+
+-- Check if users table has data
+SELECT 
+  'Users Table' as step,
+  COUNT(*) as user_count
+FROM users;
+
+-- Check if RLS is enabled on tables
+SELECT 
+  'RLS Check' as step,
+  COUNT(*) as rls_enabled_count
+FROM pg_policies 
+WHERE schemaname = 'public';
+
+-- Check if helper functions exist
+SELECT 
+  'Functions Check' as step,
+  COUNT(*) as function_count
+FROM pg_proc 
+WHERE proname IN ('get_current_user_id', 'get_current_user_role', 'user_has_role', 'create_user_record');
+
+-- List all tables (for debugging)
+SELECT table_name 
+FROM information_schema.tables 
+WHERE table_schema = 'public' 
+  AND table_type = 'BASE TABLE'
+ORDER BY table_name;
+
+
+-- --- Source: 001_complete_schema.sql ---
+-- ============================================================
 -- Lavage & Vidange ERP 2026
 -- COMPLETE DATABASE MIGRATION (Clean Install)
 -- Copy this entire file and run it in Supabase SQL Editor
@@ -736,3 +783,236 @@ INSERT INTO public.services (name_fr, name_ar, price, duration_minutes, commissi
 -- DONE! Now go to Supabase Auth > Users > Create User
 -- The trigger will automatically create the public.users record
 -- ============================================================
+
+
+-- --- Source: 003_fix_users_table.sql ---
+-- ============================================================
+-- FIX: Full schema repair - users table + auth trigger
+-- Migration: 003_fix_users_table.sql
+-- ============================================================
+
+-- STEP 1: Create user_role enum type if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+    CREATE TYPE user_role AS ENUM ('admin', 'manager', 'cashier', 'worker');
+  END IF;
+END$$;
+
+-- STEP 2: Create users table if it doesn't exist at all
+CREATE TABLE IF NOT EXISTS public.users (
+  id UUID PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  full_name VARCHAR(255),
+  role user_role NOT NULL DEFAULT 'worker',
+  phone VARCHAR(50),
+  avatar_url VARCHAR(500),
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- STEP 3: Add full_name column if table exists but column is missing
+ALTER TABLE public.users 
+  ADD COLUMN IF NOT EXISTS full_name VARCHAR(255);
+
+-- STEP 4: Add other potentially missing columns
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role user_role NOT NULL DEFAULT 'worker';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500);
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
+
+-- STEP 5: Fill NULL full_name with email prefix
+UPDATE public.users
+SET full_name = SPLIT_PART(email, '@', 1)
+WHERE full_name IS NULL;
+
+-- ============================================================
+-- STEP 6: Create auth trigger to auto-create public.users record
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_role user_role;
+BEGIN
+  -- Safely cast role from metadata, fallback to 'worker'
+  BEGIN
+    v_role := (NEW.raw_user_meta_data->>'role')::user_role;
+  EXCEPTION WHEN OTHERS THEN
+    v_role := 'worker'::user_role;
+  END;
+
+  INSERT INTO public.users (id, email, full_name, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(
+      NEW.raw_user_meta_data->>'full_name',
+      NEW.raw_user_meta_data->>'name',
+      SPLIT_PART(NEW.email, '@', 1)
+    ),
+    v_role
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    full_name = COALESCE(EXCLUDED.full_name, public.users.full_name);
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- STEP 7: Attach trigger to auth.users
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_auth_user();
+
+-- ============================================================
+-- STEP 8: Grant permissions
+-- ============================================================
+GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON public.users TO postgres, service_role;
+GRANT SELECT, INSERT, UPDATE ON public.users TO authenticated;
+
+-- ============================================================
+-- VERIFICATION (uncomment to check):
+-- SELECT column_name, data_type FROM information_schema.columns 
+-- WHERE table_schema = 'public' AND table_name = 'users' ORDER BY ordinal_position;
+-- SELECT typname FROM pg_type WHERE typname = 'user_role';
+-- ============================================================
+
+
+-- --- Source: 004_add_service_categories.sql ---
+-- Migration to add category column to services table
+
+-- Create the service category enum if it does not exist
+DO $$ BEGIN
+    CREATE TYPE service_category AS ENUM ('lavage', 'vidange', 'pneumatique');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+-- Add the category column to the services table
+ALTER TABLE public.services ADD COLUMN IF NOT EXISTS category service_category DEFAULT 'lavage'::service_category;
+
+
+-- --- Source: 005_add_pin_code_to_users.sql ---
+-- Add pin_code to users table
+ALTER TABLE public.users
+ADD COLUMN IF NOT EXISTS pin_code text;
+
+-- Add comment
+COMMENT ON COLUMN public.users.pin_code IS 'Optional PIN code for offline login access';
+
+-- Force schema cache reload (Supabase convention)
+NOTIFY pgrst, 'reload schema';
+
+
+-- --- Source: 006_enable_realtime.sql ---
+-- Enable Realtime for all core tables
+
+-- First, drop the publication if it exists to recreate it clean
+DROP PUBLICATION IF EXISTS supabase_realtime;
+CREATE PUBLICATION supabase_realtime;
+
+-- Add all tables that the app needs to sync in real-time
+ALTER PUBLICATION supabase_realtime ADD TABLE users;
+ALTER PUBLICATION supabase_realtime ADD TABLE customers;
+ALTER PUBLICATION supabase_realtime ADD TABLE vehicles;
+ALTER PUBLICATION supabase_realtime ADD TABLE services;
+ALTER PUBLICATION supabase_realtime ADD TABLE products;
+ALTER PUBLICATION supabase_realtime ADD TABLE suppliers;
+ALTER PUBLICATION supabase_realtime ADD TABLE employees;
+ALTER PUBLICATION supabase_realtime ADD TABLE attendance;
+ALTER PUBLICATION supabase_realtime ADD TABLE queue_tickets;
+ALTER PUBLICATION supabase_realtime ADD TABLE ticket_services;
+ALTER PUBLICATION supabase_realtime ADD TABLE ticket_products;
+ALTER PUBLICATION supabase_realtime ADD TABLE commissions;
+ALTER PUBLICATION supabase_realtime ADD TABLE debts;
+ALTER PUBLICATION supabase_realtime ADD TABLE payments;
+ALTER PUBLICATION supabase_realtime ADD TABLE purchase_invoices;
+ALTER PUBLICATION supabase_realtime ADD TABLE financial_transactions;
+ALTER PUBLICATION supabase_realtime ADD TABLE stock_movements;
+ALTER PUBLICATION supabase_realtime ADD TABLE loyalty_transactions;
+
+-- Note: In Supabase, you also need to ensure replication is enabled in the Dashboard > Database > Replication
+-- but this SQL handles the Postgres publication side.
+
+
+-- --- Source: 007_add_employee_name.sql ---
+-- Add full_name column to employees to allow standalone creation
+ALTER TABLE public.employees
+ADD COLUMN IF NOT EXISTS full_name text;
+
+-- Populate existing employees with their linked user's full_name
+UPDATE public.employees e
+SET full_name = u.full_name
+FROM public.users u
+WHERE e.user_id = u.id AND e.full_name IS NULL;
+
+-- Make full_name NOT NULL now that existing rows are populated
+ALTER TABLE public.employees
+ALTER COLUMN full_name SET NOT NULL;
+
+-- Update RLS policies to allow employees to be viewed/managed
+-- (This shouldn't change the existing logic, just making sure the column is accessible)
+
+
+-- --- Source: 009_enforce_ticket_sequence.sql ---
+-- ============================================================
+-- 009: Race-safe sequential ticket numbering via counter table
+-- ============================================================
+
+-- 1. Clean up all old triggers and functions
+DROP TRIGGER IF EXISTS before_insert_queue_ticket_force_sequence ON public.queue_tickets;
+DROP TRIGGER IF EXISTS before_insert_queue_ticket ON public.queue_tickets;
+DROP FUNCTION IF EXISTS public.generate_ticket_number();
+DROP FUNCTION IF EXISTS public.enforce_daily_ticket_sequence();
+
+-- 2. Create a dedicated atomic counter table (one row per day)
+CREATE TABLE IF NOT EXISTS public.ticket_counters (
+  counter_date DATE PRIMARY KEY,
+  counter      INTEGER NOT NULL DEFAULT 0
+);
+
+-- Allow the trigger function (SECURITY DEFINER) to access this table
+GRANT ALL ON public.ticket_counters TO postgres, service_role;
+
+-- 3. The trigger function: uses INSERT ... ON CONFLICT DO UPDATE 
+--    which is 100% atomic in PostgreSQL — no race condition possible.
+CREATE OR REPLACE FUNCTION public.enforce_daily_ticket_sequence()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_seq INTEGER;
+BEGIN
+  -- Atomically increment or initialize today's counter
+  INSERT INTO public.ticket_counters (counter_date, counter)
+  VALUES (CURRENT_DATE, 1)
+  ON CONFLICT (counter_date) DO UPDATE
+    SET counter = ticket_counters.counter + 1
+  RETURNING counter INTO v_seq;
+
+  -- Format: 20260301-0001, 20260301-0002, ... (resets each midnight)
+  NEW.ticket_number := TO_CHAR(CURRENT_DATE, 'YYYYMMDD') || '-' || LPAD(v_seq::TEXT, 4, '0');
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 4. Attach trigger to queue_tickets (fires on every INSERT)
+CREATE TRIGGER before_insert_queue_ticket_force_sequence
+  BEFORE INSERT ON public.queue_tickets
+  FOR EACH ROW
+  EXECUTE FUNCTION public.enforce_daily_ticket_sequence();
+
+-- 5. Seed today's counter from existing tickets (so we don't re-use old numbers)
+INSERT INTO public.ticket_counters (counter_date, counter)
+SELECT CURRENT_DATE,
+       COALESCE(MAX(CAST(SUBSTRING(ticket_number FROM 10) AS INTEGER)), 0)
+  FROM public.queue_tickets
+ WHERE created_at::date = CURRENT_DATE
+   AND ticket_number LIKE TO_CHAR(CURRENT_DATE, 'YYYYMMDD') || '-%'
+ON CONFLICT (counter_date) DO UPDATE
+  SET counter = EXCLUDED.counter;

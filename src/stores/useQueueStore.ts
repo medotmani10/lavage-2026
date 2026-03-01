@@ -24,6 +24,7 @@ interface QueueState {
     payment_method?: 'cash' | 'card' | 'credit' | 'mixed';
     notes?: string;
     assigned_employee_id?: string | null;
+    requested_service: 'lavage' | 'vidange' | 'pneumatique';
   }) => Promise<QueueTicket | null>;
   updateTicketStatus: (ticketId: string, status: TicketStatus) => Promise<void>;
   updateTicketEmployee: (ticketId: string, employeeId: string | null) => Promise<void>;
@@ -103,9 +104,26 @@ export const useQueueStore = create<QueueState>((set, get) => ({
 
     try {
       const newTicketId = crypto.randomUUID();
+
+      // Generate client-side ticket number for immediate printing
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Bug #5 fix: Use MAX existing ticket number, not COUNT (count causes duplicates when cache is partial)
+      const allToday = await db.queue_tickets
+        .filter(t => new Date(t.created_at) >= today && t.requested_service === ticketData.requested_service)
+        .toArray();
+
+      const prefix = ticketData.requested_service === 'lavage' ? 'L' : ticketData.requested_service === 'vidange' ? 'V' : 'P';
+      const maxNum = allToday.reduce((max, t) => {
+        const num = parseInt((t.ticket_number || '').replace(/[^0-9]/g, '') || '0', 10);
+        return Math.max(max, num);
+      }, 0);
+      const ticketNumber = `${prefix}${(maxNum + 1).toString().padStart(4, '0')}`;
+
       const newTicket = {
         id: newTicketId,
-        ticket_number: null,
+        ticket_number: ticketNumber,
         customer_id: ticketData.customer_id,
         vehicle_id: ticketData.vehicle_id,
         priority: ticketData.priority || 'normal',
@@ -125,7 +143,8 @@ export const useQueueStore = create<QueueState>((set, get) => ({
         cancelled_at: null,
         cancelled_reason: null,
         service_ids: [],
-        product_items: []
+        product_items: [],
+        requested_service: ticketData.requested_service
       };
 
       await queueOperation('queue_tickets', 'INSERT', newTicket);

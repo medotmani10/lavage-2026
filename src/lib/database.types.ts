@@ -392,8 +392,14 @@ export interface Database {
         Row: {
           id: string
           ticket_number: string
-          customer_id: string
-          vehicle_id: string
+          customer_id: string | null
+          vehicle_id: string | null
+          guest_name: string | null
+          guest_phone: string | null
+          requested_service: string | null
+          current_mileage: number | null
+          next_oil_change: number | null
+          filters_changed: Json | null
           service_ids: string[]
           product_items: Json
           status: TicketStatus
@@ -417,8 +423,14 @@ export interface Database {
         Insert: {
           id?: string
           ticket_number?: string
-          customer_id: string
-          vehicle_id: string
+          customer_id?: string | null
+          vehicle_id?: string | null
+          guest_name?: string | null
+          guest_phone?: string | null
+          requested_service?: string | null
+          current_mileage?: number | null
+          next_oil_change?: number | null
+          filters_changed?: Json | null
           service_ids?: string[]
           product_items?: Json
           status?: TicketStatus
@@ -442,8 +454,14 @@ export interface Database {
         Update: {
           id?: string
           ticket_number?: string
-          customer_id?: string
-          vehicle_id?: string
+          customer_id?: string | null
+          vehicle_id?: string | null
+          guest_name?: string | null
+          guest_phone?: string | null
+          requested_service?: string | null
+          current_mileage?: number | null
+          next_oil_change?: number | null
+          filters_changed?: Json | null
           service_ids?: string[]
           product_items?: Json
           status?: TicketStatus

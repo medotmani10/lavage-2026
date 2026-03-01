@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { showAlert } from '../stores/useDialogStore';
 import { usePOSStore } from '../stores/usePOSStore';
 import { useQueueStore } from '../stores/useQueueStore';
 import { Card } from '../components/Card';
@@ -10,8 +11,9 @@ import { ProductsPanel } from './ProductsPanel';
 import { CartPanel } from './CartPanel';
 import { CustomerSelect } from './CustomerSelect';
 import { PaymentModal } from './PaymentModal';
-import { ShoppingCart, Wrench, Package, ArrowLeft, Clock, Car } from 'lucide-react';
+import { ShoppingCart, Wrench, Package, ArrowLeft, Clock, Car, UserPlus } from 'lucide-react';
 import type { QueueTicket } from '../types';
+import { GuestConversionModal } from '../components/GuestConversionModal';
 
 export function POS() {
   const { t } = useTranslation();
@@ -23,6 +25,7 @@ export function POS() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [guestTicketToConvert, setGuestTicketToConvert] = useState<QueueTicket | null>(null);
 
   useEffect(() => {
     fetchTickets();
@@ -30,14 +33,30 @@ export function POS() {
     return () => unsubscribe();
   }, [fetchTickets, subscribeToTickets]);
 
-  const activeTickets = tickets.filter(t => t.status === 'in_progress' || t.status === 'pending');
+  // Sort: Vidange first, then by created_at
+  const activeTickets = tickets
+    .filter(t => t.status === 'in_progress')
+    .sort((a, b) => {
+      const aIsVidange = a.requested_service === 'vidange' ? 0 : 1;
+      const bIsVidange = b.requested_service === 'vidange' ? 0 : 1;
+      if (aIsVidange !== bIsVidange) return aIsVidange - bIsVidange;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
 
   const handleTicketSelect = (ticket: QueueTicket) => {
+    // Guest ticket: must convert to real customer first
+    if (!ticket.customer_id) {
+      setGuestTicketToConvert(ticket);
+      return;
+    }
     setSelectedTicketId(ticket.id);
     if (ticket.customer_id) setCustomer(ticket.customer_id);
     if (ticket.vehicle_id) setVehicle(ticket.vehicle_id);
     if (ticket.assigned_employee_id) setEmployee(ticket.assigned_employee_id);
   };
+
+  const selectedTicket = activeTickets.find(t => t.id === selectedTicketId);
+  const selectedCategory = selectedTicket?.requested_service as 'lavage' | 'vidange' | 'pneumatique' | undefined;
 
   const handleCheckout = async () => {
     setIsProcessing(true);
@@ -46,7 +65,7 @@ export function POS() {
       const { customerId, vehicleId, employeeId, notes, discount, items } = usePOSStore.getState();
 
       if (!customerId || !vehicleId) {
-        alert("Veuillez sélectionner un client et un véhicule");
+        showAlert("Veuillez sélectionner un client et un véhicule", 'warning');
         setIsProcessing(false);
         return;
       }
@@ -57,6 +76,12 @@ export function POS() {
       const serviceTotal = services.reduce((sum, s) => sum + s.subtotal, 0);
       const productTotal = products.reduce((sum, p) => sum + p.subtotal, 0);
       const subtotalAmt = serviceTotal + productTotal;
+
+      // Bug #6 fix: Use s.category from the cart item (set by ServicesPanel from the DB),
+      // NOT name keyword matching which is brittle and would miss the Fiche Vidange trigger.
+      const hasVidange = services.some(s => s.category === 'vidange');
+      const hasPneu = services.some(s => s.category === 'pneumatique');
+      const inferredCategory = hasVidange ? 'vidange' : (hasPneu ? 'pneumatique' : 'lavage');
 
       // If a ticket was selected from the queue, update it. Otherwise create a new one.
       if (selectedTicketId) {
@@ -75,6 +100,7 @@ export function POS() {
           total_amount: total,
           paid_amount: 0,
           status: 'pending',
+          requested_service: inferredCategory,
         });
         if (ticket) {
           setSelectedTicketId(ticket.id);
@@ -83,7 +109,7 @@ export function POS() {
       }
     } catch (error) {
       console.error('Checkout error:', error);
-      alert(t('messages.saveError'));
+      showAlert(t('messages.saveError'), 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -92,43 +118,43 @@ export function POS() {
   return (
     <div className="fixed inset-0 z-50 bg-[var(--bg-base)] flex flex-col animate-fade-in">
       {/* ── Top Navigation Bar ── */}
-      <div className="h-[var(--header-h)] bg-[var(--bg-surface)] border-b border-[var(--border)] flex items-center justify-between px-6 shrink-0 shadow-md">
-        <div className="flex items-center gap-4">
+      <div className="h-[var(--header-h)] bg-[var(--bg-surface)] border-b border-[var(--border)] flex items-center justify-between px-4 md:px-6 shrink-0 shadow-md">
+        <div className="flex items-center gap-2 md:gap-4">
           <button
             onClick={() => navigate('/dashboard')}
-            className="p-2 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-white transition-colors border border-[var(--border-lg)]"
+            className="p-1.5 md:p-2 rounded-xl bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-white transition-colors border border-[var(--border-lg)]"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Caisse Enregistreuse (POS)</h1>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5 border border-primary-500/30 bg-primary-500/10 px-2 py-0.5 rounded text-primary-400 inline-block font-medium">
+            <h1 className="text-sm md:text-xl font-bold text-white tracking-tight">Caisse <span className="hidden sm:inline">Enregistreuse</span> (POS)</h1>
+            <p className="hidden md:inline-block text-xs text-[var(--text-muted)] mt-0.5 border border-primary-500/30 bg-primary-500/10 px-2 py-0.5 rounded text-primary-400 font-medium">
               Mode Plein Écran
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="text-right">
+        <div className="flex items-center gap-3 md:gap-6">
+          <div className="hidden sm:block text-right">
             <p className="text-xs text-[var(--text-muted)] font-medium uppercase tracking-wider">{t('pos.subtotal')}</p>
-            <p className="text-2xl font-bold text-gradient">{subtotal.toFixed(2)} DZD</p>
+            <p className="text-xl md:text-2xl font-bold text-gradient">{subtotal.toFixed(2)} DZD</p>
           </div>
           <Button
             variant="success"
-            size="lg"
+            size="md"
             onClick={handleCheckout}
             isLoading={isProcessing}
             disabled={subtotal === 0}
-            className="shadow-lg shadow-success-500/20"
+            className="shadow-lg shadow-success-500/20 md:px-6 md:py-3"
           >
-            <ShoppingCart className="w-5 h-5" />
-            <span>Encaisser</span>
+            <ShoppingCart className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="md:text-lg">{subtotal > 0 ? `${subtotal.toFixed(0)} DA` : 'Encaisser'}</span>
           </Button>
         </div>
       </div>
 
       {/* ── Main Content Grid ── */}
-      <div className="flex-1 overflow-hidden p-6 gap-6 grid grid-cols-1 lg:grid-cols-12">
+      <div className="flex-1 overflow-y-auto lg:overflow-hidden p-4 md:p-6 pb-24 lg:pb-6 gap-6 grid grid-cols-1 lg:grid-cols-12">
 
         {/* 1. Left Panel: Queue Active Tickets (col-span-3) */}
         <div className="hidden lg:flex flex-col gap-4 col-span-3 h-full">
@@ -144,38 +170,58 @@ export function POS() {
               </div>
             ) : (
               <div className="space-y-3 p-3">
-                {activeTickets.map(ticket => (
-                  <div
-                    key={ticket.id}
-                    onClick={() => handleTicketSelect(ticket)}
-                    className={`p-3 rounded-xl border cursor-pointer transition-all duration-200 ${selectedTicketId === ticket.id
-                      ? 'bg-primary-500/10 border-primary-500 shadow-[var(--shadow-glow-orange)]'
-                      : 'bg-[var(--bg-panel)] border-[var(--border-lg)] hover:border-primary-400/50 hover:bg-[var(--bg-hover)]'
-                      }`}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="font-bold text-white text-sm">#{ticket.ticket_number}</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${ticket.status === 'in_progress' ? 'bg-primary-500/20 text-primary-400' : 'bg-warning-500/20 text-warning-400'
-                        }`}>
-                        {ticket.status === 'in_progress' ? 'En Cours' : 'En Attente'}
-                      </span>
+                {activeTickets.map(ticket => {
+                  const isGuest = !ticket.customer_id;
+                  return (
+                    <div
+                      key={ticket.id}
+                      onClick={() => handleTicketSelect(ticket)}
+                      className={`p-3 rounded-xl border cursor-pointer transition-all duration-200 ${selectedTicketId === ticket.id
+                        ? 'bg-primary-500/10 border-primary-500 shadow-[var(--shadow-glow-orange)]'
+                        : 'bg-[var(--bg-panel)] border-[var(--border-lg)] hover:border-primary-400/50 hover:bg-[var(--bg-hover)]'
+                        }`}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-white text-sm">#{ticket.ticket_number}</span>
+                          {isGuest && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-0.5">
+                              <UserPlus className="w-2.5 h-2.5" /> Visiteur
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {ticket.requested_service === 'lavage' && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">Lavage</span>
+                          )}
+                          {ticket.requested_service === 'vidange' && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30">Vidange</span>
+                          )}
+                          {ticket.requested_service === 'pneumatique' && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">Pneumatique</span>
+                          )}
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-primary-500/20 text-primary-400">
+                            En Cours
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)] font-medium mb-1 truncate">
+                        {ticket.customer?.full_name || ticket.guest_name || 'Visiteur'}
+                      </p>
+                      <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] bg-[var(--bg-base)] p-1.5 rounded border border-[var(--border)]">
+                        <Car className="w-3.5 h-3.5" />
+                        <span className="truncate">{ticket.vehicle?.plate_number || '—'}</span>
+                      </div>
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)] font-medium mb-1 truncate">
-                      {ticket.customer?.full_name || 'Client Passager'}
-                    </p>
-                    <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] bg-[var(--bg-base)] p-1.5 rounded border border-[var(--border)]">
-                      <Car className="w-3.5 h-3.5" />
-                      <span className="truncate">{ticket.vehicle?.plate_number}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>
         </div>
 
-        {/* 2. Middle Panel: Services & Products (col-span-5) */}
-        <div className="col-span-12 lg:col-span-5 flex flex-col gap-4 h-full min-h-0">
+        {/* 2. Middle Panel: Services & Products (col-span-12 lg:col-span-5) */}
+        <div className="col-span-12 lg:col-span-5 flex flex-col gap-4 h-[500px] lg:h-full lg:min-h-0">
           {/* Tabs */}
           <div className="flex gap-2 p-1 bg-[var(--bg-panel)] rounded-xl border border-[var(--border-lg)] overflow-hidden shrink-0">
             <button
@@ -186,7 +232,7 @@ export function POS() {
                 }`}
             >
               <Wrench className="w-4 h-4" />
-              Services (Lavage)
+              Services
             </button>
             <button
               onClick={() => setActiveTab('products')}
@@ -196,17 +242,21 @@ export function POS() {
                 }`}
             >
               <Package className="w-4 h-4" />
-              Produits Boutique
+              Boutique
             </button>
           </div>
 
           <Card className="flex-1 overflow-hidden p-0 bg-[var(--bg-surface)] border-[var(--border)]">
-            {activeTab === 'services' ? <ServicesPanel /> : <ProductsPanel />}
+            {activeTab === 'services' ? (
+              <ServicesPanel ticketCategory={selectedCategory} />
+            ) : (
+              <ProductsPanel ticketCategory={selectedCategory} />
+            )}
           </Card>
         </div>
 
-        {/* 3. Right Panel: Current Cart & Customer (col-span-4) */}
-        <div className="col-span-12 lg:col-span-4 flex flex-col gap-4 h-full min-h-0">
+        {/* 3. Right Panel: Current Cart & Customer (col-span-12 lg:col-span-4) */}
+        <div className="col-span-12 lg:col-span-4 flex flex-col gap-4 h-[600px] lg:h-full lg:min-h-0">
           <Card className="p-4 bg-[var(--bg-surface)] border-[var(--border)] shrink-0">
             <CustomerSelect />
           </Card>
@@ -225,6 +275,19 @@ export function POS() {
             setShowPaymentModal(false);
             setSelectedTicketId(null);
           }}
+        />
+      )}
+
+      {guestTicketToConvert && (
+        <GuestConversionModal
+          ticket={guestTicketToConvert}
+          onConverted={() => {
+            setGuestTicketToConvert(null);
+            setSelectedTicketId(guestTicketToConvert.id);
+            if (guestTicketToConvert.assigned_employee_id) setEmployee(guestTicketToConvert.assigned_employee_id);
+            fetchTickets();
+          }}
+          onClose={() => setGuestTicketToConvert(null)}
         />
       )}
     </div>

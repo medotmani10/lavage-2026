@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePOSStore } from '../stores/usePOSStore';
 import { db } from '../lib/db';
@@ -17,12 +17,22 @@ interface Product {
   brand: string | null;
 }
 
-export function ProductsPanel() {
+interface ProductsPanelProps {
+  ticketCategory?: 'lavage' | 'vidange' | 'pneumatique';
+}
+
+export function ProductsPanel({ ticketCategory }: ProductsPanelProps) {
   const { t } = useTranslation();
   const { addItem } = usePOSStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  useEffect(() => {
+    if (ticketCategory === 'vidange') setSelectedCategory('oil');
+    else if (ticketCategory === 'pneumatique') setSelectedCategory('tire');
+    else if (ticketCategory === 'lavage') setSelectedCategory('all');
+  }, [ticketCategory]);
 
   const categories = ['all', 'tire', 'oil', 'accessory', 'other'];
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { db } from '../lib/db';
 import { queueOperation } from '../lib/sync';
+import { showAlert, showConfirm } from '../stores/useDialogStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -42,7 +43,7 @@ export function Services() {
     });
 
     const handleDelete = async (service: Service) => {
-        if (!confirm(t('messages.deleteConfirm'))) return;
+        if (!(await showConfirm(t('messages.deleteConfirm')))) return;
 
         await queueOperation('services', 'UPDATE', { ...service, active: false });
     };
@@ -111,67 +112,69 @@ export function Services() {
             ) : (
                 <Card className="overflow-hidden p-0 border-[var(--border)]">
                     <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-[var(--bg-panel)] border-b border-[var(--border)] uppercase text-[10px] tracking-wider text-[var(--text-secondary)] font-bold">
-                                    <th className="px-6 py-4">Service</th>
-                                    <th className="px-6 py-4">Prix de Vente</th>
-                                    <th className="px-6 py-4">Coût</th>
-                                    <th className="px-6 py-4">Durée (min)</th>
-                                    <th className="px-6 py-4">Commission (%)</th>
-                                    <th className="px-6 py-4 text-right">{t('common.actions')}</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[var(--border)]">
-                                {filteredServices.map((service) => (
-                                    <tr key={service.id} className="hover:bg-[var(--bg-hover)] transition-colors group">
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <p className="font-bold text-white text-sm">
-                                                {service.name}
-                                            </p>
-                                            {(service.description) && (
-                                                <p className="text-xs text-[var(--text-secondary)] mt-0.5 truncate max-w-xs cursor-help" title={service.description}>
-                                                    {service.description}
-                                                </p>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap font-medium text-primary-400">
-                                            {service.price} DA
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap font-medium text-danger-400">
-                                            {service.cost} DA
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--text-muted)] font-medium">
-                                            {service.duration_minutes} min
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-success-400 font-bold">
-                                            {service.commission_rate}%
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                                            <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => {
-                                                        setEditingService(service);
-                                                        setShowModal(true);
-                                                    }}
-                                                    className="p-2 hover:bg-primary-500/10 rounded-lg transition-colors border border-transparent hover:border-primary-500/30"
-                                                    title="Modifier"
-                                                >
-                                                    <Edit2 className="w-4 h-4 text-primary-400" />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDelete(service)}
-                                                    className="p-2 hover:bg-danger-500/10 rounded-lg transition-colors border border-transparent hover:border-danger-500/30"
-                                                    title="Supprimer"
-                                                >
-                                                    <Trash2 className="w-4 h-4 text-danger-400" />
-                                                </button>
-                                            </div>
-                                        </td>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[600px]">
+                                <thead>
+                                    <tr className="bg-[var(--bg-panel)] border-b border-[var(--border)] uppercase text-[10px] tracking-wider text-[var(--text-secondary)] font-bold">
+                                        <th className="px-6 py-4">Service</th>
+                                        <th className="px-6 py-4">Prix de Vente</th>
+                                        <th className="px-6 py-4">Coût</th>
+                                        <th className="px-6 py-4">Durée (min)</th>
+                                        <th className="px-6 py-4">Commission (%)</th>
+                                        <th className="px-6 py-4 text-right">{t('common.actions')}</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-[var(--border)]">
+                                    {filteredServices.map((service) => (
+                                        <tr key={service.id} className="hover:bg-[var(--bg-hover)] transition-colors group">
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <p className="font-bold text-white text-sm">
+                                                    {service.name}
+                                                </p>
+                                                {(service.description) && (
+                                                    <p className="text-xs text-[var(--text-secondary)] mt-0.5 truncate max-w-xs cursor-help" title={service.description}>
+                                                        {service.description}
+                                                    </p>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap font-medium text-primary-400">
+                                                {service.price} DA
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap font-medium text-danger-400">
+                                                {service.cost} DA
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--text-muted)] font-medium">
+                                                {service.duration_minutes} min
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-success-400 font-bold">
+                                                {service.commission_rate}%
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingService(service);
+                                                            setShowModal(true);
+                                                        }}
+                                                        className="p-2 hover:bg-primary-500/10 rounded-lg transition-colors border border-transparent hover:border-primary-500/30"
+                                                        title="Modifier"
+                                                    >
+                                                        <Edit2 className="w-4 h-4 text-primary-400" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(service)}
+                                                        className="p-2 hover:bg-danger-500/10 rounded-lg transition-colors border border-transparent hover:border-danger-500/30"
+                                                        title="Supprimer"
+                                                    >
+                                                        <Trash2 className="w-4 h-4 text-danger-400" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </Card>
             )}
@@ -239,7 +242,7 @@ function ServiceModal({ service, defaultCategory, onClose }: ServiceModalProps) 
             onClose();
         } catch (error) {
             console.error(error);
-            alert(t('messages.saveError'));
+            showAlert(t('messages.saveError'), 'error');
         } finally {
             setIsLoading(false);
         }

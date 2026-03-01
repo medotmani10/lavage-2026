@@ -17,9 +17,14 @@ import {
     Plus,
     Edit2,
     Trash2,
-    X
+    X,
+    Database,
+    AlertTriangle,
+    RefreshCw
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { db } from '../lib/db';
+import { showAlert, showConfirm, showPrompt } from '../stores/useDialogStore';
 import type { User } from '../lib/db';
 import type { UserRole } from '../lib/database.types';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -44,6 +49,7 @@ export function Settings() {
         { id: 'billing', icon: CreditCard, label: 'Facturation' },
         { id: 'printer', icon: Printer, label: 'Impression' },
         { id: 'notifications', icon: Bell, label: 'Notifications' },
+        { id: 'advanced', icon: Database, label: 'Avancé' },
     ];
 
     const usersData = useLiveQuery(async () => {
@@ -51,7 +57,7 @@ export function Settings() {
     });
 
     const handleDeleteUser = async (user: User) => {
-        if (!confirm(t('messages.deleteConfirm', 'Êtes-vous sûr de vouloir supprimer cet utilisateur ?'))) return;
+        if (!(await showConfirm(t('messages.deleteConfirm', 'Êtes-vous sûr de vouloir supprimer cet utilisateur ?')))) return;
         await queueOperation('users', 'UPDATE', { ...user, active: false, updated_at: new Date().toISOString() });
     };
 
@@ -335,6 +341,121 @@ export function Settings() {
                                 </div>
                             </div>
                         )}
+
+                        {activeTab === 'advanced' && (
+                            <div className="space-y-6 animate-fade-in relative">
+                                <div className="flex items-center gap-3 pb-4 border-b border-[var(--border)]">
+                                    <div className="w-10 h-10 bg-danger-500/10 border border-danger-500/20 rounded-xl flex items-center justify-center">
+                                        <AlertTriangle className="w-5 h-5 text-danger-500" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-white">Zone de Danger</h2>
+                                        <p className="text-xs text-[var(--text-muted)] font-medium">Actions irréversibles et maintenance du système.</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="p-4 bg-[var(--bg-base)] border border-danger-500/20 rounded-xl">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                            <div>
+                                                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                                    <RefreshCw className="w-4 h-4 text-warning-500" />
+                                                    Réinitialiser le Cache Local
+                                                </h3>
+                                                <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-lg">
+                                                    Vide la base de données locale (hors ligne) et force une resynchronisation complète depuis le serveur web lors du prochain rechargement.
+                                                </p>
+                                            </div>
+                                            <Button
+                                                variant="secondary"
+                                                className="shrink-0 border-warning-500/30 text-warning-400 hover:bg-warning-500/10"
+                                                onClick={async () => {
+                                                    if (!(await showConfirm("Voulez-vous vraiment vider le cache local ? L'application va redémarrer."))) return;
+                                                    await db.delete();
+                                                    window.location.reload();
+                                                }}
+                                            >
+                                                Vider le cache
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-danger-500/5 border border-danger-500/30 rounded-xl">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                            <div>
+                                                <h3 className="text-sm font-bold text-danger-400 flex items-center gap-2">
+                                                    <Database className="w-4 h-4" />
+                                                    Réinitialisation Totale des Données
+                                                </h3>
+                                                <p className="text-gray-400 mb-6">
+                                                    Supprime DÉFINITIVEMENT toutes les données (clients, tickets, paiements, services, produits, employés, fournisseurs, etc). Seul votre compte d'accès sera conservé. Cette action est IRRÉVERSIBLE.
+                                                </p>
+                                            </div>
+                                            <Button
+                                                className="shrink-0 bg-danger-500 hover:bg-danger-600 text-white border-transparent"
+                                                onClick={async () => {
+                                                    const code = await showPrompt(
+                                                        "ATTENTION: C'est irréversible! Tapez 'RESET' pour confirmer la suppression de toutes les données d'activité.",
+                                                        "Réinitialisation Totale",
+                                                        "RESET",
+                                                        "Supprimer tout"
+                                                    );
+                                                    if (code !== 'RESET') return;
+
+                                                    setIsSaving(true);
+                                                    try {
+                                                        // Clear local sync queue first to stop background pushes
+                                                        await db.sync_queue.clear();
+
+                                                        // Order matters due to foreign keys. We drop child relations first.
+                                                        const tables = [
+                                                            'loyalty_transactions',
+                                                            'stock_movements',
+                                                            'attendance',
+                                                            'purchase_invoices',
+                                                            'ticket_services',
+                                                            'ticket_products',
+                                                            'payments',
+                                                            'commissions',
+                                                            'debts',
+                                                            'financial_transactions',
+                                                            'queue_tickets',
+                                                            'vehicles',
+                                                            'customers',
+                                                            'products',
+                                                            'services',
+                                                            'employees',
+                                                            'suppliers'
+                                                        ] as const;
+
+                                                        for (const table of tables) {
+                                                            // Using .not('id', 'is', null) which is the official canonical PostgREST method to mass delete
+                                                            const { error } = await supabase.from(table).delete().not('id', 'is', null);
+                                                            if (error) {
+                                                                console.error(`Error deleting ${table}:`, error);
+                                                                throw new Error(`[${table}] ${error.message}`);
+                                                            }
+                                                        }
+
+                                                        // Wipe local storage explicitly
+                                                        await db.delete();
+                                                        showAlert("Réinitialisation réussie. L'application va redémarrer.", "success");
+                                                        window.location.reload();
+                                                    } catch (err: any) {
+                                                        console.error(err);
+                                                        showAlert(`Erreur lors de la réinitialisation: ${err.message || 'Erreur inconnue'}`, "error");
+                                                    } finally {
+                                                        setIsSaving(false);
+                                                    }
+                                                }}
+                                            >
+                                                Supprimer tout
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </Card>
                 </div>
             </div>
@@ -428,7 +549,7 @@ function UserModal({ user, onClose }: UserModalProps) {
             onClose();
         } catch (error) {
             console.error(error);
-            alert(t('messages.saveError', 'Erreur lors de la sauvegarde.'));
+            showAlert(t('messages.saveError', 'Erreur lors de la sauvegarde.'), 'error');
         } finally {
             setIsLoading(false);
         }
@@ -518,8 +639,8 @@ function UserModal({ user, onClose }: UserModalProps) {
                                     <label
                                         key={page.key}
                                         className={`flex items-center gap-2 p-2.5 rounded-lg cursor-pointer transition-all border ${allowedPages.includes(page.key)
-                                                ? 'bg-primary-500/10 border-primary-500/30 text-primary-400'
-                                                : 'bg-[var(--bg-panel)] border-transparent text-[var(--text-secondary)] hover:border-[var(--border-lg)]'
+                                            ? 'bg-primary-500/10 border-primary-500/30 text-primary-400'
+                                            : 'bg-[var(--bg-panel)] border-transparent text-[var(--text-secondary)] hover:border-[var(--border-lg)]'
                                             }`}
                                     >
                                         <input
@@ -529,8 +650,8 @@ function UserModal({ user, onClose }: UserModalProps) {
                                             className="sr-only"
                                         />
                                         <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${allowedPages.includes(page.key)
-                                                ? 'bg-primary-500 border-primary-500'
-                                                : 'border-[var(--border-lg)]'
+                                            ? 'bg-primary-500 border-primary-500'
+                                            : 'border-[var(--border-lg)]'
                                             }`}>
                                             {allowedPages.includes(page.key) && (
                                                 <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">

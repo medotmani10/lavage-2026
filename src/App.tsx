@@ -2,14 +2,13 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components';
 import { Login } from './pages/Login';
-import { Dashboard, Queue, POS, Customers, Vehicles, Inventory, Services, Suppliers, Employees, Finance, Reports, Settings } from './pages';
+import { Dashboard, Queue, POS, Customers, Inventory, Services, Suppliers, Employees, Finance, Reports, Settings } from './pages';
 import { NotFound } from './pages/NotFound';
-import { Kiosk } from './pages/Kiosk';
 import { ProtectedRoute } from './hooks/useAuth';
-import { PWABadge } from './components/PWABadge';
 import { pullChanges, pushChanges, setupRealtimeSync } from './lib/sync';
 import { useAuthStore } from './stores/useAuthStore';
 import { Database } from 'lucide-react';
+import { GlobalDialogs } from './components/GlobalDialogs';
 
 function App() {
   const { isAuthenticated } = useAuthStore();
@@ -82,7 +81,6 @@ function App() {
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<Login />} />
-        <Route path="/kiosk" element={<Kiosk />} />
 
         {/* Protected Routes */}
         <Route path="/" element={
@@ -95,7 +93,6 @@ function App() {
           <Route path="queue" element={<Queue />} />
           <Route path="pos" element={<POS />} />
           <Route path="customers" element={<Customers />} />
-          <Route path="vehicles" element={<Vehicles />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="services" element={<Services />} />
           <Route path="suppliers" element={<Suppliers />} />
@@ -132,7 +129,7 @@ function App() {
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
-      <PWABadge />
+      <GlobalDialogs />
     </BrowserRouter>
   );
 }

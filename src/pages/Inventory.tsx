@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { db } from '../lib/db';
 import { queueOperation } from '../lib/sync';
+import { showAlert, showConfirm } from '../stores/useDialogStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Select } from '../components/Select';
-import { Plus, Search, Package, Edit2, Trash2, AlertTriangle, TrendingUp, X } from 'lucide-react';
+import { Search, Package, Edit2, Trash2, AlertTriangle, TrendingUp, X, FileText } from 'lucide-react';
+import { PurchaseInvoiceModal } from './PurchaseInvoiceModal';
 
 interface Product {
   id: string;
@@ -37,7 +39,8 @@ export function Inventory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
-  const [showModal, setShowModal] = useState(false);
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const productsData = useLiveQuery(async () => {
@@ -76,7 +79,7 @@ export function Inventory() {
   });
 
   const handleDelete = async (product: Product) => {
-    if (!confirm(t('messages.deleteConfirm'))) return;
+    if (!(await showConfirm(t('messages.deleteConfirm')))) return;
 
     await queueOperation('products', 'UPDATE', { ...product, active: false });
   };
@@ -95,13 +98,12 @@ export function Inventory() {
           </p>
         </div>
 
-        <Button onClick={() => {
-          setEditingProduct(null);
-          setShowModal(true);
-        }}>
-          <Plus className="w-5 h-5 mr-2" />
-          {t('inventory.addProduct')}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button onClick={() => setShowInvoiceModal(true)}>
+            <FileText className="w-5 h-5 mr-2" />
+            Nouvel Achat
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -197,8 +199,8 @@ export function Inventory() {
         </Card>
       ) : (
         <Card className="overflow-hidden p-0 border-[var(--border)]">
-          <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-[var(--border-lg)] scrollbar-track-[var(--bg-surface)]">
+            <table className="w-full text-left border-collapse min-w-[1000px]">
               <thead>
                 <tr className="bg-[var(--bg-panel)] border-b border-[var(--border)] uppercase text-[10px] tracking-wider text-[var(--text-secondary)] font-bold">
                   <th className="px-6 py-4">{t('inventory.productName')}</th>
@@ -262,7 +264,7 @@ export function Inventory() {
                         <button
                           onClick={() => {
                             setEditingProduct(product);
-                            setShowModal(true);
+                            setShowProductModal(true);
                           }}
                           className="p-2 hover:bg-primary-500/10 rounded-lg transition-colors border border-transparent hover:border-primary-500/30"
                         >
@@ -284,14 +286,24 @@ export function Inventory() {
         </Card>
       )}
 
-      {/* Modal */}
-      {showModal && (
+      {/* Modals */}
+      {showProductModal && (
         <ProductModal
           product={editingProduct}
           suppliers={suppliers}
           onClose={() => {
-            setShowModal(false);
+            setShowProductModal(false);
             setEditingProduct(null);
+          }}
+        />
+      )}
+
+      {showInvoiceModal && (
+        <PurchaseInvoiceModal
+          onClose={() => setShowInvoiceModal(false)}
+          onAddNewProduct={() => {
+            setEditingProduct(null);
+            setShowProductModal(true);
           }}
         />
       )}
@@ -334,10 +346,10 @@ function ProductModal({ product, suppliers, onClose }: ProductModalProps) {
       name: formData.name,
       category: formData.category,
       sku: formData.sku,
-      stock_quantity: parseInt(formData.stock_quantity) || 0,
-      min_stock: parseInt(formData.min_stock) || 5,
-      unit_price: parseFloat(formData.unit_price) || 0,
-      cost_price: parseFloat(formData.cost_price) || 0,
+      stock_quantity: 0,
+      min_stock: 5,
+      unit_price: 0,
+      cost_price: 0,
       supplier_id: formData.supplier_id || null,
       brand: formData.brand || null,
     };
@@ -368,7 +380,7 @@ function ProductModal({ product, suppliers, onClose }: ProductModalProps) {
       onClose();
     } catch (error) {
       console.error(error);
-      alert(t('messages.saveError'));
+      showAlert(t('messages.saveError'), 'error');
     } finally {
       setIsLoading(false);
     }
@@ -381,13 +393,10 @@ function ProductModal({ product, suppliers, onClose }: ProductModalProps) {
     { value: 'other', label: t('inventory.categories.other') },
   ];
 
-  const supplierOptions = suppliers.map((s) => ({
-    value: s.id,
-    label: s.company_name,
-  }));
+
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-fade-in">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in">
       <div className="bg-[var(--bg-surface)] border border-[var(--border-lg)] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-6 border-b border-[var(--border)] shrink-0">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -421,65 +430,22 @@ function ProductModal({ product, suppliers, onClose }: ProductModalProps) {
               required
             />
             <Input
-              label={t('inventory.sku')}
+              label={formData.category === 'other' || formData.category === 'accessory' ? "Véhicule(s) compatible(s) / Réf." : t('inventory.sku')}
               value={formData.sku}
               onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
               required
+              placeholder={formData.category === 'other' || formData.category === 'accessory' ? "Ex: Renault, Peugeot..." : ""}
             />
           </div>
 
-          <Input
-            label={t('inventory.brand')}
-            value={formData.brand}
-            onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-          />
-
-          <Select
-            label={t('inventory.supplier')}
-            value={formData.supplier_id}
-            onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value })}
-            options={[
-              { value: '', label: t('inventory.selectSupplier') },
-              ...supplierOptions,
-            ]}
-          />
-
-          <div className="grid grid-cols-3 gap-4">
+          <div>
             <Input
-              label={t('inventory.stock')}
-              type="number"
-              value={formData.stock_quantity}
-              onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
-              min="0"
-              required
-            />
-            <Input
-              label={t('inventory.minStock')}
-              type="number"
-              value={formData.min_stock}
-              onChange={(e) => setFormData({ ...formData, min_stock: e.target.value })}
-              min="0"
-              required
-            />
-            <Input
-              label={t('inventory.unitPrice')}
-              type="number"
-              value={formData.unit_price}
-              onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
-              min="0"
-              step="0.01"
-              required
+              label={t('inventory.brand')}
+              value={formData.brand}
+              onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+              placeholder="Ex: Total, Michelin, Bosch..."
             />
           </div>
-
-          <Input
-            label={t('inventory.costPrice')}
-            type="number"
-            value={formData.cost_price}
-            onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
-            min="0"
-            step="0.01"
-          />
 
           {formData.category === 'tire' && (
             <div className="p-4 bg-[var(--bg-panel)] border border-[var(--border)] rounded-xl space-y-3">

@@ -1,4 +1,9 @@
 -- ============================================================
+-- CLEAN RLS AND RPC MASTER FILE
+-- ============================================================
+
+-- --- Source: 002_rls_policies_clean.sql ---
+-- ============================================================
 -- Lavage & Vidange ERP 2026
 -- Row Level Security (RLS) Policies - CLEAN INSTALL
 -- Supabase PostgreSQL
@@ -556,3 +561,96 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ============================================================
 -- END OF RLS POLICIES
 -- ============================================================
+
+
+-- --- Source: 010_kiosk_secure_rpc.sql ---
+-- ============================================================
+-- Lavage & Vidange ERP 2026
+-- Migration: Secure Kiosk RPC
+-- ============================================================
+
+-- 1. DROP INSECURE POLICIES FOR 'anon' ROLE
+-- This revokes public SELECT access to sensitive tables.
+DROP POLICY IF EXISTS customers_read_anon ON customers;
+DROP POLICY IF EXISTS customers_insert_anon ON customers;
+
+DROP POLICY IF EXISTS vehicles_read_anon ON vehicles;
+DROP POLICY IF EXISTS vehicles_insert_anon ON vehicles;
+
+DROP POLICY IF EXISTS queue_tickets_insert_anon ON queue_tickets;
+-- Note: queue_tickets_read_anon is KEPT so the Kiosk can see active tickets and queue position.
+
+-- 2. CREATE SECURE RPC FUNCTION
+-- This function runs with elevated privileges (SECURITY DEFINER)
+-- acting as a secure black box for the Kiosk application.
+CREATE OR REPLACE FUNCTION kiosk_create_ticket(
+    p_name TEXT,
+    p_phone TEXT,
+    p_plate TEXT,
+    p_brand TEXT
+) RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER -- Critical: executes with the privileges of the creator
+SET search_path = public -- Secure the search path
+AS $$
+DECLARE
+    v_customer_id UUID;
+    v_vehicle_id UUID;
+    v_ticket_number TEXT;
+BEGIN
+    -- 1. Find or create customer
+    SELECT id INTO v_customer_id FROM customers WHERE phone = p_phone LIMIT 1;
+    
+    IF v_customer_id IS NULL THEN
+        INSERT INTO customers (full_name, phone, credit_limit, current_balance, loyalty_points, notes, active)
+        VALUES (p_name, p_phone, 0, 0, 0, 'Client Kiosque', true)
+        RETURNING id INTO v_customer_id;
+    END IF;
+
+    -- 2. Find or create vehicle
+    SELECT id INTO v_vehicle_id FROM vehicles WHERE customer_id = v_customer_id LIMIT 1;
+
+    IF v_vehicle_id IS NULL THEN
+        INSERT INTO vehicles (customer_id, plate_number, brand, model, year)
+        VALUES (v_customer_id, p_plate, p_brand, 'Inconnu', EXTRACT(YEAR FROM CURRENT_DATE)::INT)
+        RETURNING id INTO v_vehicle_id;
+    END IF;
+
+    -- 3. Create ticket
+    -- The trigger "generate_ticket_number" on queue_tickets will automatically 
+    -- generate the #K0001 sequence number before insert.
+    INSERT INTO queue_tickets (
+        customer_id, 
+        vehicle_id, 
+        status, 
+        priority, 
+        subtotal, 
+        tax_rate, 
+        tax_amount, 
+        discount, 
+        total_amount, 
+        paid_amount, 
+        notes, 
+        service_ids, 
+        product_items
+    ) VALUES (
+        v_customer_id,
+        v_vehicle_id,
+        'pending',
+        'normal',
+        0, 0, 0, 0, 0, 0,
+        'Ticket Kiosque',
+        ARRAY[]::UUID[],
+        '[]'::JSONB
+    ) RETURNING ticket_number INTO v_ticket_number;
+
+    RETURN v_ticket_number;
+END;
+$$;
+
+-- 3. GRANT EXECUTION RIGHTS TO ANON
+-- Allow the public Kiosk app to execute this specific function only.
+GRANT EXECUTE ON FUNCTION kiosk_create_ticket(TEXT, TEXT, TEXT, TEXT) TO anon;
+GRANT EXECUTE ON FUNCTION kiosk_create_ticket(TEXT, TEXT, TEXT, TEXT) TO authenticated;
+
+

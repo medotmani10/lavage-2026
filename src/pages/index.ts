@@ -2,7 +2,6 @@ export { Dashboard } from './Dashboard';
 export { Queue } from './Queue';
 export { POS } from './POS';
 export { Customers } from './Customers';
-export { Vehicles } from './Vehicles';
 export { Inventory } from './Inventory';
 export { Services } from './Services';
 export { Suppliers } from './Suppliers';

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { db } from '../lib/db';
 import { queueOperation } from '../lib/sync';
+import { showAlert, showConfirm } from '../stores/useDialogStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -44,7 +45,7 @@ export function Suppliers() {
   });
 
   const handleDelete = async (supplier: Supplier) => {
-    if (!confirm(t('messages.deleteConfirm'))) return;
+    if (!(await showConfirm(t('messages.deleteConfirm')))) return;
 
     await queueOperation('suppliers', 'UPDATE', { ...supplier, active: false });
   };
@@ -260,7 +261,7 @@ function SupplierModal({ supplier, onClose }: SupplierModalProps) {
       onClose();
     } catch (error) {
       console.error(error);
-      alert(t('messages.saveError'));
+      showAlert(t('messages.saveError'), 'error');
     } finally {
       setIsLoading(false);
     }

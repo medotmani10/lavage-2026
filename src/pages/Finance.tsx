@@ -35,12 +35,14 @@ export function Finance() {
     const tickets = await db.queue_tickets.toArray();
     const completedTickets = tickets.filter(t => t.status === 'completed');
 
-    const ticketsToday = completedTickets.filter(t => new Date(t.created_at).getTime() >= today.getTime());
-    const ticketsMonth = completedTickets.filter(t => new Date(t.created_at).getTime() >= firstDayOfMonth.getTime());
+    // Bug #8 fix: filter by completed_at for accurate daily/monthly reporting
+    const ticketsToday = completedTickets.filter(t => t.completed_at && new Date(t.completed_at).getTime() >= today.getTime());
+    const ticketsMonth = completedTickets.filter(t => t.completed_at && new Date(t.completed_at).getTime() >= firstDayOfMonth.getTime());
 
-    const daily_revenue = ticketsToday.reduce((sum, t) => sum + (t.total_amount || 0), 0);
-    const monthly_revenue = ticketsMonth.reduce((sum, t) => sum + (t.total_amount || 0), 0);
-    const total_revenue = completedTickets.reduce((sum, t) => sum + (t.total_amount || 0), 0);
+    // Bug #1 fix: use paid_amount (actual cash) not total_amount (includes unpaid credit)
+    const daily_revenue = ticketsToday.reduce((sum, t) => sum + (t.paid_amount || 0), 0);
+    const monthly_revenue = ticketsMonth.reduce((sum, t) => sum + (t.paid_amount || 0), 0);
+    const total_revenue = completedTickets.reduce((sum, t) => sum + (t.paid_amount || 0), 0);
 
     const debts = await db.debts.toArray();
     const pending_debts = debts
@@ -93,6 +95,7 @@ export function Finance() {
         date: d.toISOString(),
         ticket_count: dayTickets.length,
         gross_revenue: completedDayTickets.reduce((sum, t) => sum + (t.total_amount || 0), 0),
+        // Bug #1 fix: collected = paid_amount only
         collected_amount: completedDayTickets.reduce((sum, t) => sum + (t.paid_amount || 0), 0)
       });
     }
@@ -193,21 +196,6 @@ export function Finance() {
             </div>
           </div>
         </Card>
-
-        <Card className="p-5 bg-[var(--bg-surface)] border-[var(--border)] group hover:border-warning-500/30 transition-all">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-bold text-[var(--text-secondary)] uppercase tracking-wider">{t('finance.lowStockProducts')}</p>
-              <p className="text-2xl font-black text-warning-400 mt-1">
-                0 {/* Would need separate query */}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-warning-500/10 border border-warning-500/20 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Package className="w-6 h-6 text-warning-400" />
-            </div>
-          </div>
-        </Card>
-
         <Card className="p-5 bg-[var(--bg-surface)] border-[var(--border)] group hover:border-success-500/30 transition-all">
           <div className="flex items-center justify-between">
             <div>
@@ -316,7 +304,7 @@ export function Finance() {
           </Card>
         </div>
       </div>
-    </div>
+    </div >
   );
 }
 
