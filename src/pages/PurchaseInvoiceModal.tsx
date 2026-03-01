@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { db } from '../lib/db';
 import { queueOperation } from '../lib/sync';
 import { showAlert } from '../stores/useDialogStore';
@@ -8,7 +7,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Select } from '../components/Select';
 import { X, Plus, Trash2, FileText, Package, CheckCircle2 } from 'lucide-react';
-import type { Product, Supplier } from '../types';
+
 
 interface PurchaseInvoiceModalProps {
     onClose: () => void;
@@ -25,7 +24,6 @@ interface InvoiceLine {
 }
 
 export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoiceModalProps) {
-    const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
 
     // Header state

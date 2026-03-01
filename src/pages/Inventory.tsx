@@ -290,7 +290,6 @@ export function Inventory() {
       {showProductModal && (
         <ProductModal
           product={editingProduct}
-          suppliers={suppliers}
           onClose={() => {
             setShowProductModal(false);
             setEditingProduct(null);
@@ -313,11 +312,10 @@ export function Inventory() {
 
 interface ProductModalProps {
   product: Product | null;
-  suppliers: Supplier[];
   onClose: () => void;
 }
 
-function ProductModal({ product, suppliers, onClose }: ProductModalProps) {
+function ProductModal({ product, onClose }: ProductModalProps) {
   const { t } = useTranslation();
   const [formData, setFormData] = useState({
     name: product?.name || '',
