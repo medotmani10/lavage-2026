@@ -131,6 +131,12 @@ export async function pullChanges() {
         const { data: payments } = await supabase.from('payments').select('*');
         if (payments) await db.payments.bulkPut(payments);
 
+        const { data: purchaseInvoices } = await supabase.from('purchase_invoices').select('*');
+        if (purchaseInvoices) await db.purchase_invoices.bulkPut(purchaseInvoices);
+
+        const { data: stockMovements } = await supabase.from('stock_movements').select('*');
+        if (stockMovements) await db.stock_movements.bulkPut(stockMovements);
+
     } catch (error) {
         console.error('Error pulling changes:', error);
     } finally {

@@ -17,6 +17,8 @@ export type Debt = PublicTables['debts']['Row'];
 export type FinancialTransaction = PublicTables['financial_transactions']['Row'];
 export type Supplier = PublicTables['suppliers']['Row'];
 export type Commission = PublicTables['commissions']['Row'];
+export type PurchaseInvoice = PublicTables['purchase_invoices']['Row'];
+export type StockMovement = PublicTables['stock_movements']['Row'];
 
 export interface SyncQueueItem {
     id?: number; // auto-increment primary key for Dexie
@@ -41,11 +43,13 @@ export const db = new Dexie('LavageVidaDB') as Dexie & {
     suppliers: EntityTable<Supplier, 'id'>,
     users: EntityTable<User, 'id'>,
     commissions: EntityTable<Commission, 'id'>,
+    purchase_invoices: EntityTable<PurchaseInvoice, 'id'>,
+    stock_movements: EntityTable<StockMovement, 'id'>,
     sync_queue: EntityTable<SyncQueueItem, 'id'>
 };
 
 // Define local schema (indices used for querying locally)
-db.version(1).stores({
+db.version(2).stores({
     customers: 'id, full_name, phone, active',
     vehicles: 'id, customer_id, plate_number',
     services: 'id, name, active',
@@ -60,5 +64,7 @@ db.version(1).stores({
     suppliers: 'id, company_name, active',
     users: 'id, email, full_name, role, pin_code, active',
     commissions: 'id, employee_id, ticket_id, created_at',
+    purchase_invoices: 'id, supplier_id, invoice_number, status, invoice_date',
+    stock_movements: 'id, product_id, movement_type, reference_type, reference_id, created_at',
     sync_queue: '++id, table, operation, created_at'
 });
