@@ -87,7 +87,7 @@ export function Finance() {
       const dayEnd = dayStart + 86400000;
 
       const dayTickets = tickets.filter(t => {
-        const time = new Date(t.completed_at || t.updated_at || t.created_at).getTime();
+        const time = new Date(t.completed_at || t.created_at).getTime();
         return time >= dayStart && time < dayEnd;
       });
 
