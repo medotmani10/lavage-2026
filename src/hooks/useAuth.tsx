@@ -18,8 +18,18 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
 
   useEffect(() => {
     const checkAuth = async () => {
-      // Check Supabase session
-      const { data: { session } } = await supabase.auth.getSession();
+      // Check Supabase session with a 5s timeout to avoid infinite loading
+      let session: any = null;
+      try {
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<{ data: { session: null } }>((resolve) =>
+          setTimeout(() => resolve({ data: { session: null } }), 5000)
+        );
+        const result = await Promise.race([sessionPromise, timeoutPromise]);
+        session = result.data.session;
+      } catch {
+        session = null;
+      }
 
       if (!session) {
         // If we have a persisted user without an active Supabase session, treating as offline login
