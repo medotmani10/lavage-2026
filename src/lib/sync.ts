@@ -162,7 +162,8 @@ export async function queueOperation(table: string, operation: 'INSERT' | 'UPDAT
 }
 
 // Subscribe to real-time changes from Supabase
-export function setupRealtimeSync() {
+export function setupRealtimeSync(retryCount = 0): () => void {
+    const MAX_RETRIES = 3;
     const channel = supabase.channel('schema-db-changes');
 
     // Helper to process incoming realtime payloads
@@ -227,6 +228,8 @@ export function setupRealtimeSync() {
         }
     };
 
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+
     console.log('Setting up Supabase Realtime subscription...');
     channel
         .on(
@@ -241,12 +244,25 @@ export function setupRealtimeSync() {
             console.log('Supabase Realtime subscription status:', status);
             if (status === 'SUBSCRIBED') {
                 console.log('Successfully subscribed to Supabase Realtime');
-            } else if (status === 'CHANNEL_ERROR') {
-                console.error('Supabase Realtime Channel Error: Check RLS and publication settings.');
+            } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
+                if (status === 'CHANNEL_ERROR') {
+                    console.error('Supabase Realtime Channel Error: Check RLS and publication settings.');
+                }
+                if (retryCount < MAX_RETRIES) {
+                    const delay = Math.pow(2, retryCount) * 5000; // 5s, 10s, 20s
+                    console.warn(`⚡ Realtime ${status} — retrying in ${delay / 1000}s (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+                    retryTimeout = setTimeout(() => {
+                        supabase.removeChannel(channel);
+                        setupRealtimeSync(retryCount + 1);
+                    }, delay);
+                } else {
+                    console.error('❌ Supabase Realtime failed after max retries. Will not retry automatically.');
+                }
             }
         });
 
     return () => {
+        if (retryTimeout) clearTimeout(retryTimeout);
         supabase.removeChannel(channel);
     };
 }
