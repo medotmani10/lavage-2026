@@ -73,16 +73,21 @@ export function Reports() {
 
     const fetchRevenueData = async (startDate: Date, endDate: Date) => {
         const tickets = await db.queue_tickets
-            .filter(t => t.status === 'completed' && new Date(t.created_at) >= startDate && new Date(t.created_at) <= endDate)
+            .filter(t => {
+                if (t.status !== 'completed') return false;
+                const completedDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at);
+                return completedDate >= startDate && completedDate <= endDate;
+            })
             .toArray();
 
         let totalRev = 0;
         const groupedByDate: Record<string, number> = {};
 
         tickets?.forEach(ticket => {
-            const dateStr = format(parseISO(ticket.created_at), period === 'today' ? 'HH:mm' : 'dd MMM', { locale: fr });
-            totalRev += Number(ticket.total_amount) || 0;
-            groupedByDate[dateStr] = (groupedByDate[dateStr] || 0) + (Number(ticket.total_amount) || 0);
+            const completedDate = ticket.completed_at ? parseISO(ticket.completed_at) : parseISO(ticket.created_at);
+            const dateStr = format(completedDate, period === 'today' ? 'HH:mm' : 'dd MMM', { locale: fr });
+            totalRev += Number(ticket.paid_amount) || 0;
+            groupedByDate[dateStr] = (groupedByDate[dateStr] || 0) + (Number(ticket.paid_amount) || 0);
         });
 
         const chartData = Object.keys(groupedByDate).map(date => ({
@@ -101,7 +106,11 @@ export function Reports() {
 
     const fetchServicesData = async (startDate: Date, endDate: Date) => {
         const tickets = await db.queue_tickets
-            .filter(t => t.status === 'completed' && new Date(t.created_at) >= startDate && new Date(t.created_at) <= endDate)
+            .filter(t => {
+                if (t.status !== 'completed') return false;
+                const completedDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at);
+                return completedDate >= startDate && completedDate <= endDate;
+            })
             .toArray();
 
         if (tickets.length === 0) {
@@ -135,7 +144,11 @@ export function Reports() {
 
     const fetchEmployeesData = async (startDate: Date, endDate: Date) => {
         const tickets = await db.queue_tickets
-            .filter(t => t.status === 'completed' && !!t.assigned_employee_id && new Date(t.created_at) >= startDate && new Date(t.created_at) <= endDate)
+            .filter(t => {
+                if (t.status !== 'completed' || !t.assigned_employee_id) return false;
+                const completedDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at);
+                return completedDate >= startDate && completedDate <= endDate;
+            })
             .toArray();
 
         const empStats: Record<string, { tickets: number, revenue: number }> = {};
@@ -151,7 +164,7 @@ export function Reports() {
             }
             if (!empStats[empName]) empStats[empName] = { tickets: 0, revenue: 0 };
             empStats[empName].tickets += 1;
-            empStats[empName].revenue += Number(t.total_amount) || 0;
+            empStats[empName].revenue += Number(t.paid_amount) || 0;
         }
 
         const chartData = Object.keys(empStats).map(name => ({

@@ -35,9 +35,11 @@ export function Finance() {
     const tickets = await db.queue_tickets.toArray();
     const completedTickets = tickets.filter(t => t.status === 'completed');
 
-    // Bug #8 fix: filter by completed_at for accurate daily/monthly reporting
-    const ticketsToday = completedTickets.filter(t => t.completed_at && new Date(t.completed_at).getTime() >= today.getTime());
-    const ticketsMonth = completedTickets.filter(t => t.completed_at && new Date(t.completed_at).getTime() >= firstDayOfMonth.getTime());
+    // Bug #8 fix: filter by completed_at (with fallback) for accurate daily/monthly reporting
+    const getTicketDate = (t: any) => new Date(t.completed_at || t.updated_at || t.created_at).getTime();
+
+    const ticketsToday = completedTickets.filter(t => getTicketDate(t) >= today.getTime());
+    const ticketsMonth = completedTickets.filter(t => getTicketDate(t) >= firstDayOfMonth.getTime());
 
     // Bug #1 fix: use paid_amount (actual cash) not total_amount (includes unpaid credit)
     const daily_revenue = ticketsToday.reduce((sum, t) => sum + (t.paid_amount || 0), 0);
@@ -85,7 +87,7 @@ export function Finance() {
       const dayEnd = dayStart + 86400000;
 
       const dayTickets = tickets.filter(t => {
-        const time = new Date(t.created_at).getTime();
+        const time = new Date(t.completed_at || t.updated_at || t.created_at).getTime();
         return time >= dayStart && time < dayEnd;
       });
 
@@ -94,7 +96,7 @@ export function Finance() {
       result.push({
         date: d.toISOString(),
         ticket_count: dayTickets.length,
-        gross_revenue: completedDayTickets.reduce((sum, t) => sum + (t.total_amount || 0), 0),
+        gross_revenue: completedDayTickets.reduce((sum, t) => sum + (t.paid_amount || 0), 0),
         // Bug #1 fix: collected = paid_amount only
         collected_amount: completedDayTickets.reduce((sum, t) => sum + (t.paid_amount || 0), 0)
       });
