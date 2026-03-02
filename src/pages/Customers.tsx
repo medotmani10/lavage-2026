@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { db } from '../lib/db';
-import { queueOperation } from '../lib/sync';
 import { showAlert, showConfirm } from '../stores/useDialogStore';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { queueOperation } from '../lib/sync';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -20,13 +19,8 @@ export function Customers() {
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [vehiclesCustomer, setVehiclesCustomer] = useState<Customer | null>(null);
 
-  const customersData = useLiveQuery(async () => {
-    const all = await db.customers.toArray();
-    return all.filter(c => c.active !== false).sort((a, b) => a.full_name.localeCompare(b.full_name));
-  });
-
-  const isLoading = customersData === undefined;
-  const customers = customersData || [];
+  const { data: allCustomers, isLoading } = useSupabaseData<Customer>('customers');
+  const customers = allCustomers.filter(c => (c as any).active !== false).sort((a, b) => a.full_name.localeCompare(b.full_name));
 
   const filteredCustomers = customers.filter((customer) => {
     const query = searchQuery.toLowerCase();

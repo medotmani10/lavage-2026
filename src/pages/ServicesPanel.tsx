@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 
 import { usePOSStore } from '../stores/usePOSStore';
-import { db } from '../lib/db';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Search, Clock, PlusCircle } from 'lucide-react';
 import { Input } from '../components/Input';
 
@@ -24,12 +23,8 @@ export function ServicesPanel({ ticketCategory }: ServicesPanelProps) {
     }
   }, [ticketCategory]);
 
-  const services = useLiveQuery(async () => {
-    const all = await db.services.toArray();
-    return all.filter(s => s.active).sort((a, b) => a.name.localeCompare(b.name));
-  });
-
-  const isLoading = services === undefined;
+  const { data: allServices, isLoading } = useSupabaseData<any>('services');
+  const services = allServices.filter(s => (s as any).active !== false).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
   const filteredServices = (services || []).filter((service: any) => {
     const name = service.name;

@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { db } from '../lib/db';
 import { queueOperation } from '../lib/sync';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -29,19 +28,16 @@ export function CustomerVehiclesPanel({ customer, isOpen, onClose }: CustomerVeh
         notes: ''
     });
 
-    const vehicles = useLiveQuery(async () => {
-        if (!customer?.id) return [];
-        const all = await db.vehicles.where('customer_id').equals(customer.id).toArray();
-        return all.filter(v => (v as any).active !== false);
-    }, [customer?.id]);
+    const { data: rawVehicles } = useSupabaseData<any>('vehicles');
+    const { data: rawTickets } = useSupabaseData<any>('queue_tickets');
 
-    const fiches = useLiveQuery(async () => {
-        if (!selectedVehicleForFiche?.id || !customer?.id) return [];
-        const all = await db.queue_tickets.where('customer_id').equals(customer.id).toArray();
-        return all
-            .filter(t => t.vehicle_id === selectedVehicleForFiche.id && t.current_mileage != null)
+    const vehicles = rawVehicles.filter(v => v.customer_id === customer?.id && (v as any).active !== false);
+
+    const fiches = (!selectedVehicleForFiche?.id || !customer?.id)
+        ? []
+        : rawTickets
+            .filter(t => t.customer_id === customer.id && t.vehicle_id === selectedVehicleForFiche.id && t.current_mileage != null)
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    }, [selectedVehicleForFiche?.id, customer?.id]);
 
     if (!isOpen || !customer) return null;
 

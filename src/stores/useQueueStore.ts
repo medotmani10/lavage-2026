@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { db } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import { queueOperation } from '../lib/sync';
 import type { QueueTicket, TicketStatus } from '../types';
 
@@ -35,53 +36,92 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   tickets: [],
   isLoading: false,
   error: null,
-
   fetchTickets: async (status) => {
     set({ isLoading: true, error: null });
 
     try {
-      let tickets = await db.queue_tickets.orderBy('created_at').toArray();
+      let resolvedTickets = [];
 
-      if (status && status.length > 0) {
-        tickets = tickets.filter(t => status.includes(t.status));
+      if (navigator.onLine) {
+        try {
+          // Fetch from Supabase directly
+          let query = supabase
+            .from('queue_tickets')
+            .select(`
+              *,
+              customer:customers(id, full_name, phone, email),
+              vehicle:vehicles(id, plate_number, brand, model, year),
+              employee:employees(id, position, user:users(full_name))
+            `)
+            .order('created_at', { ascending: true });
+
+          if (status && status.length > 0) {
+            query = query.in('status', status);
+          }
+
+          const { data, error } = await query;
+          if (error) throw error;
+
+          resolvedTickets = data || [];
+
+          // Silently cache to dexie
+          if (data && data.length > 0) {
+            const plainTickets = data.map((t: any) => {
+              const { customer, vehicle, employee, ...rest } = t;
+              return rest;
+            });
+            db.queue_tickets.bulkPut(plainTickets as any).catch(console.error);
+          }
+        } catch (e) {
+          console.warn("Supabase fetch failed in queueStore, falling back to Dexie", e);
+        }
       }
 
-      // Resolve relations manually for offline view
-      const resolvedTickets = await Promise.all(tickets.map(async (t) => {
-        let customer = null;
-        if (t.customer_id) {
-          customer = await db.customers.get(t.customer_id).catch(() => null);
+      // Fallback to Dexie if offline or Supabase failed
+      if (resolvedTickets.length === 0) {
+        let tickets = await db.queue_tickets.orderBy('created_at').toArray();
+
+        if (status && status.length > 0) {
+          tickets = tickets.filter(t => status.includes(t.status));
         }
 
-        let vehicle = null;
-        if (t.vehicle_id && t.vehicle_id !== t.customer_id) {
-          vehicle = await db.vehicles.get(t.vehicle_id).catch(() => null);
-        }
+        // Resolve relations manually for offline view
+        resolvedTickets = await Promise.all(tickets.map(async (t) => {
+          let customer = null;
+          if (t.customer_id) {
+            customer = await db.customers.get(t.customer_id).catch(() => null);
+          }
 
-        const employee = t.assigned_employee_id ? await db.employees.get(t.assigned_employee_id).catch(() => null) : null;
+          let vehicle = null;
+          if (t.vehicle_id && t.vehicle_id !== t.customer_id) {
+            vehicle = await db.vehicles.get(t.vehicle_id).catch(() => null);
+          }
 
-        return {
-          ...t,
-          customer: customer ? {
-            id: customer.id,
-            full_name: customer.full_name,
-            phone: customer.phone,
-            email: customer.email
-          } : { full_name: 'Client Kiosque' }, // Fallback for kiosk tickets before customer syncs
-          vehicle: vehicle ? {
-            id: vehicle.id,
-            plate_number: vehicle.plate_number,
-            brand: vehicle.brand,
-            model: vehicle.model,
-            year: vehicle.year
-          } : { plate_number: 'N/A' }, // Fallback for kiosk tickets without explicit vehicles
-          employee: employee ? {
-            id: employee.id,
-            position: employee.position,
-            user: { full_name: (employee as any).user?.full_name || 'Inconnu' }
-          } : null
-        };
-      }));
+          const employee = t.assigned_employee_id ? await db.employees.get(t.assigned_employee_id).catch(() => null) : null;
+
+          return {
+            ...t,
+            customer: customer ? {
+              id: customer.id,
+              full_name: customer.full_name,
+              phone: customer.phone,
+              email: customer.email
+            } : { full_name: 'Client Kiosque' }, // Fallback for kiosk tickets before customer syncs
+            vehicle: vehicle ? {
+              id: vehicle.id,
+              plate_number: vehicle.plate_number,
+              brand: vehicle.brand,
+              model: vehicle.model,
+              year: vehicle.year
+            } : { plate_number: 'N/A' }, // Fallback for kiosk tickets without explicit vehicles
+            employee: employee ? {
+              id: employee.id,
+              position: employee.position,
+              user: { full_name: (employee as any).user?.full_name || 'Inconnu' }
+            } : null
+          };
+        })) as any;
+      }
 
       set({ tickets: resolvedTickets as any, isLoading: false });
     } catch (error: unknown) {

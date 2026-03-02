@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePOSStore } from '../stores/usePOSStore';
-import { db } from '../lib/db';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Search, Package, AlertTriangle, PlusCircle } from 'lucide-react';
 import { Input } from '../components/Input';
 
@@ -36,12 +35,8 @@ export function ProductsPanel({ ticketCategory }: ProductsPanelProps) {
 
   const categories = ['all', 'tire', 'oil', 'accessory', 'other'];
 
-  const products = useLiveQuery(async () => {
-    const all = await db.products.toArray();
-    return all.filter(p => p.active && p.stock_quantity > 0).sort((a, b) => a.name.localeCompare(b.name));
-  });
-
-  const isLoading = products === undefined;
+  const { data: allProducts, isLoading } = useSupabaseData<Product>('products');
+  const products = allProducts.filter(p => (p as any).active && p.stock_quantity > 0).sort((a, b) => a.name.localeCompare(b.name));
 
   const filteredProducts = (products || []).filter((product: any) => {
     const name = product.name;

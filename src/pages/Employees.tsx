@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { db } from '../lib/db';
-import { queueOperation } from '../lib/sync';
 import { showAlert, showConfirm } from '../stores/useDialogStore';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { queueOperation } from '../lib/sync';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -41,12 +40,15 @@ export function Employees() {
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
-  const employeesData = useLiveQuery(async () => {
-    const all = await db.employees.toArray();
-    const active = all.filter(e => (e as any).active !== false);
+  const { data: rawEmployees, isLoading: isEmpLoading } = useSupabaseData<Employee>('employees');
+  const { data: rawUsers, isLoading: isUserLoading } = useSupabaseData<UserOption>('users');
 
-    const resolved = await Promise.all(active.map(async (e) => {
-      const user = e.user_id ? await db.users.get(e.user_id) : undefined;
+  const isLoading = isEmpLoading || isUserLoading;
+
+  const employees = rawEmployees
+    .filter(e => (e as any).active !== false)
+    .map(e => {
+      const user = rawUsers.find(u => u.id === e.user_id);
       return {
         ...e,
         user: user ? {
@@ -55,21 +57,13 @@ export function Employees() {
           role: user.role
         } : undefined
       };
-    }));
+    })
+    .sort((a, b) => a.position.localeCompare(b.position));
 
-    return resolved.sort((a, b) => a.position.localeCompare(b.position));
-  });
-
-  const userOptionsData = useLiveQuery(async () => {
-    const all = await db.users.toArray();
-    return all.filter(u => u.active !== false)
-      .map(u => ({ id: u.id, full_name: u.full_name, email: u.email, role: u.role }))
-      .sort((a, b) => a.full_name.localeCompare(b.full_name));
-  });
-
-  const isLoading = employeesData === undefined || userOptionsData === undefined;
-  const employees = employeesData as Employee[] || [];
-  const userOptions = userOptionsData as UserOption[] || [];
+  const userOptions = rawUsers
+    .filter(u => (u as any).active !== false)
+    .map(u => ({ id: u.id, full_name: u.full_name, email: u.email, role: u.role }))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
 
   const filteredEmployees = employees.filter((employee) => {
     const query = searchQuery.toLowerCase();

@@ -1,7 +1,6 @@
 
 import { useNavigate } from 'react-router-dom';
-import { db } from '../lib/db';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useAuthStore } from '../stores/useAuthStore';
 import {
   TrendingUp,
@@ -22,34 +21,39 @@ import { Button } from '../components/Button';
 export function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const statsData = useLiveQuery(async () => {
+  // Fetch raw data
+  const { data: ticketsData, isLoading: ticketsLoading } = useSupabaseData<any>('queue_tickets');
+  const { data: customersData, isLoading: customersLoading } = useSupabaseData<any>('customers');
+  const { data: productsData, isLoading: productsLoading } = useSupabaseData<any>('products');
+
+  const loading = ticketsLoading || customersLoading || productsLoading;
+
+  // Calculate stats from the arrays
+  const stats = (() => {
     try {
-      const tickets = await db.queue_tickets.toArray();
-      const customersCount = await db.customers.filter(c => c.active !== false).count();
-      const stockLowCount = await db.products.filter(p => p.stock_quantity <= 5 && p.active !== false).count();
+      const tickets = ticketsData || [];
+      const customersCount = (customersData || []).filter((c: any) => c.active !== false).length;
+      const stockLowCount = (productsData || []).filter((p: any) => p.stock_quantity <= 5 && p.active !== false).length;
 
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
-      // Use completed_at for accurate daily revenue (not created_at)
-      const completedTickets = tickets.filter(t => t.status === 'completed');
-      const todayCompleted = completedTickets.filter(t => t.completed_at && new Date(t.completed_at) >= todayStart);
-      const recentActivity = tickets.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
+      const completedTickets = tickets.filter((t: any) => t.status === 'completed');
+      const todayCompleted = completedTickets.filter((t: any) => t.completed_at && new Date(t.completed_at) >= todayStart);
+      const recentActivity = [...tickets].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
 
       const firstDayOfMonth = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
-      const monthlyCompleted = completedTickets.filter(t => t.completed_at && new Date(t.completed_at) >= firstDayOfMonth);
+      const monthlyCompleted = completedTickets.filter((t: any) => t.completed_at && new Date(t.completed_at) >= firstDayOfMonth);
 
       return {
-        // Bug #1 fix: use paid_amount (cash drawer) not total_amount (which includes credit)
-        // Bug #8 fix: filter by completed_at not created_at
-        daily_revenue: todayCompleted.reduce((s, t) => s + (t.paid_amount || 0), 0),
-        monthly_revenue: monthlyCompleted.reduce((s, t) => s + (t.paid_amount || 0), 0),
-        current_queue: tickets.filter(t => ['pending', 'in_progress'].includes(t.status)).length,
+        daily_revenue: todayCompleted.reduce((s: number, t: any) => s + (t.paid_amount || 0), 0),
+        monthly_revenue: monthlyCompleted.reduce((s: number, t: any) => s + (t.paid_amount || 0), 0),
+        current_queue: tickets.filter((t: any) => ['pending', 'in_progress'].includes(t.status)).length,
         completed_today: todayCompleted.length,
-        total_customers: customersCount || 0,
-        low_stock: stockLowCount || 0,
+        total_customers: customersCount,
+        low_stock: stockLowCount,
         pending_debts: 0,
-        recentActivity: recentActivity || []
+        recentActivity: recentActivity
       };
     } catch (e) {
       console.error(e);
@@ -61,22 +65,12 @@ export function Dashboard() {
         total_customers: 0,
         low_stock: 0,
         pending_debts: 0,
-        recentActivity: []
+        recentActivity: [] as any[]
       };
     }
-  });
+  })();
 
-  const loading = statsData === undefined;
-  const stats = statsData || {
-    daily_revenue: 0,
-    monthly_revenue: 0,
-    current_queue: 0,
-    completed_today: 0,
-    total_customers: 0,
-    low_stock: 0,
-    pending_debts: 0,
-    recentActivity: [] as any[]
-  };
+
 
   const statCards = [
     {

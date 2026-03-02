@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePOSStore } from '../stores/usePOSStore';
-import { db } from '../lib/db';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { User, Car, Briefcase } from 'lucide-react';
 import { Select } from '../components/Select';
 
@@ -11,26 +10,26 @@ export function CustomerSelect() {
   const { customerId, vehicleId, setCustomer, setVehicle } = usePOSStore();
 
   const [employeeId, setEmployeeId] = useState<string>('');
+  const { data: rawCustomers } = useSupabaseData<any>('customers');
+  const { data: rawEmployees } = useSupabaseData<any>('employees');
+  const { data: rawVehicles } = useSupabaseData<any>('vehicles');
 
-  const customers = useLiveQuery(async () => {
-    const all = await db.customers.toArray();
-    return all.filter(c => c.active !== false).sort((a, b) => a.full_name.localeCompare(b.full_name));
-  }) || [];
+  const customers = rawCustomers
+    .filter(c => c.active !== false)
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
 
-  const employees = useLiveQuery(async () => {
-    const all = await db.employees.toArray();
-    return all.filter(e => e.active !== false).map(e => ({
+  const employees = rawEmployees
+    .filter(e => e.active !== false)
+    .map(e => ({
       id: e.id,
       name: e.full_name || 'Unknown',
       position: e.position
-    })).sort((a, b) => a.name.localeCompare(b.name));
-  }) || [];
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
-  const vehicles = useLiveQuery(async () => {
-    if (!customerId) return [];
-    const all = await db.vehicles.where('customer_id').equals(customerId).toArray();
-    return all.sort((a, b) => a.plate_number.localeCompare(b.plate_number));
-  }, [customerId]) || [];
+  const vehicles = rawVehicles
+    .filter(v => v.customer_id === customerId)
+    .sort((a, b) => a.plate_number.localeCompare(b.plate_number));
 
   const selectedCustomer = customers.find((c) => c.id === customerId);
 

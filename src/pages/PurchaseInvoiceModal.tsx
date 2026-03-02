@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { db } from '../lib/db';
 import { queueOperation } from '../lib/sync';
 import { showAlert } from '../stores/useDialogStore';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Select } from '../components/Select';
@@ -38,15 +38,11 @@ export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoi
     // Payment state
     const [paidAmount, setPaidAmount] = useState<number | ''>('');
 
-    const products = useLiveQuery(async () => {
-        const all = await db.products.toArray();
-        return all.filter(p => p.active !== false).sort((a, b) => a.name.localeCompare(b.name));
-    });
+    const { data: rawProducts } = useSupabaseData<any>('products');
+    const { data: rawSuppliers } = useSupabaseData<any>('suppliers');
 
-    const suppliers = useLiveQuery(async () => {
-        const all = await db.suppliers.toArray();
-        return all.filter(s => s.active !== false).sort((a, b) => a.company_name.localeCompare(b.company_name));
-    });
+    const products = rawProducts.filter(p => p.active !== false).sort((a, b) => a.name.localeCompare(b.name));
+    const suppliers = rawSuppliers.filter(s => s.active !== false).sort((a, b) => a.company_name.localeCompare(b.company_name));
 
     const totalAmount = lines.reduce((sum, line) => sum + line.subtotal, 0);
     const effectivePaid = Math.min(Number(paidAmount) || 0, totalAmount);

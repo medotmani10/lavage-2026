@@ -7,7 +7,7 @@ import { db } from '../lib/db';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Mail, Lock, AlertCircle, Wrench, Droplets, Gauge, KeyRound, User as UserIcon } from 'lucide-react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import type { User } from '../types';
 
 export function Login() {
@@ -23,9 +23,8 @@ export function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [loginMode, setLoginMode] = useState<'online' | 'offline'>('online');
 
-  const localUsers = useLiveQuery(async () => {
-    return await db.users.filter(u => u.active !== false).toArray();
-  });
+  const { data: rawUsers } = useSupabaseData<any>('users');
+  const localUsers = rawUsers.filter(u => u.active !== false);
 
   useEffect(() => {
     // If the store already has an authenticated user (from persist)

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { db } from '../lib/db';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import {
@@ -26,38 +25,47 @@ export function Finance() {
   const { t } = useTranslation();
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('week');
 
-  const stats = useLiveQuery(async () => {
+  // Fetch all necessary data
+  const { data: ticketsData, isLoading: isTicketsLoading } = useSupabaseData<any>('queue_tickets');
+  const { data: debtsData, isLoading: isDebtsLoading } = useSupabaseData<any>('debts');
+  const { data: suppliersData, isLoading: isSuppliersLoading } = useSupabaseData<any>('suppliers');
+  const { data: employeesData, isLoading: isEmployeesLoading } = useSupabaseData<any>('employees');
+
+  const isLoading = isTicketsLoading || isDebtsLoading || isSuppliersLoading || isEmployeesLoading;
+
+  const stats = (() => {
+    if (isLoading) return undefined;
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    const tickets = await db.queue_tickets.toArray();
-    const completedTickets = tickets.filter(t => t.status === 'completed');
+    const tickets = ticketsData || [];
+    const completedTickets = tickets.filter((t: any) => t.status === 'completed');
 
     // Bug #8 fix: filter by completed_at (with fallback) for accurate daily/monthly reporting
     const getTicketDate = (t: any) => new Date(t.completed_at || t.updated_at || t.created_at).getTime();
 
-    const ticketsToday = completedTickets.filter(t => getTicketDate(t) >= today.getTime());
-    const ticketsMonth = completedTickets.filter(t => getTicketDate(t) >= firstDayOfMonth.getTime());
+    const ticketsToday = completedTickets.filter((t: any) => getTicketDate(t) >= today.getTime());
+    const ticketsMonth = completedTickets.filter((t: any) => getTicketDate(t) >= firstDayOfMonth.getTime());
 
     // Bug #1 fix: use paid_amount (actual cash) not total_amount (includes unpaid credit)
-    const daily_revenue = ticketsToday.reduce((sum, t) => sum + (t.paid_amount || 0), 0);
-    const monthly_revenue = ticketsMonth.reduce((sum, t) => sum + (t.paid_amount || 0), 0);
-    const total_revenue = completedTickets.reduce((sum, t) => sum + (t.paid_amount || 0), 0);
+    const daily_revenue = ticketsToday.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
+    const monthly_revenue = ticketsMonth.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
+    const total_revenue = completedTickets.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
 
-    const debts = await db.debts.toArray();
+    const debts = debtsData || [];
     const pending_debts = debts
-      .filter(d => d.status !== 'completed' && d.status !== 'cancelled')
-      .reduce((sum, d) => sum + (d.remaining_amount || 0), 0);
+      .filter((d: any) => d.status !== 'completed' && d.status !== 'cancelled')
+      .reduce((sum: number, d: any) => sum + (d.remaining_amount || 0), 0);
 
-    const suppliers = await db.suppliers.toArray();
-    const supplier_debts = suppliers.reduce((sum, s: any) => sum + (s.balance_owed || 0), 0);
+    const suppliers = suppliersData || [];
+    const supplier_debts = suppliers.reduce((sum: number, s: any) => sum + (s.balance_owed || 0), 0);
 
-    const employees = await db.employees.toArray();
+    const employees = employeesData || [];
     const employee_commissions = employees
-      .filter(e => (e as any).active !== false)
-      .reduce((sum, e) => sum + (e.pending_commissions || 0), 0);
+      .filter((e: any) => e.active !== false)
+      .reduce((sum: number, e: any) => sum + (e.pending_commissions || 0), 0);
 
     return {
       daily_revenue,
@@ -69,16 +77,18 @@ export function Finance() {
       tickets_today: ticketsToday.length,
       tickets_month: ticketsMonth.length
     };
-  });
+  })();
 
-  const dailyRevenue = useLiveQuery(async () => {
+  const dailyRevenue = (() => {
+    if (isLoading) return undefined;
+
     const days = selectedPeriod === 'week' ? 7 : 30;
     const result: DailyRevenue[] = [];
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const tickets = await db.queue_tickets.toArray();
+    const tickets = ticketsData || [];
 
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(today);
@@ -86,26 +96,24 @@ export function Finance() {
       const dayStart = d.getTime();
       const dayEnd = dayStart + 86400000;
 
-      const dayTickets = tickets.filter(t => {
+      const dayTickets = tickets.filter((t: any) => {
         const time = new Date(t.completed_at || t.created_at).getTime();
         return time >= dayStart && time < dayEnd;
       });
 
-      const completedDayTickets = dayTickets.filter(t => t.status === 'completed');
+      const completedDayTickets = dayTickets.filter((t: any) => t.status === 'completed');
 
       result.push({
         date: d.toISOString(),
         ticket_count: dayTickets.length,
-        gross_revenue: completedDayTickets.reduce((sum, t) => sum + (t.paid_amount || 0), 0),
+        gross_revenue: completedDayTickets.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0),
         // Bug #1 fix: collected = paid_amount only
-        collected_amount: completedDayTickets.reduce((sum, t) => sum + (t.paid_amount || 0), 0)
+        collected_amount: completedDayTickets.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0)
       });
     }
 
     return result;
-  }, [selectedPeriod]);
-
-  const isLoading = stats === undefined || dailyRevenue === undefined;
+  })();
 
   if (isLoading) {
     return (

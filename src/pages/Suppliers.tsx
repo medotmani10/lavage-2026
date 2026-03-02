@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { db } from '../lib/db';
-import { queueOperation } from '../lib/sync';
 import { showAlert, showConfirm } from '../stores/useDialogStore';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { queueOperation } from '../lib/sync';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -26,13 +25,8 @@ export function Suppliers() {
   const [showModal, setShowModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
 
-  const suppliersData = useLiveQuery(async () => {
-    const all = await db.suppliers.toArray();
-    return all.filter(s => s.active !== false).sort((a, b) => a.company_name.localeCompare(b.company_name));
-  });
-
-  const isLoading = suppliersData === undefined;
-  const suppliers = suppliersData as Supplier[] || [];
+  const { data: rawSuppliers, isLoading } = useSupabaseData<Supplier>('suppliers');
+  const suppliers = rawSuppliers.filter(s => (s as any).active !== false).sort((a, b) => a.company_name.localeCompare(b.company_name));
 
   const filteredSuppliers = suppliers.filter((supplier) => {
     const query = searchQuery.toLowerCase();

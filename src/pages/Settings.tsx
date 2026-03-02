@@ -27,8 +27,8 @@ import { db } from '../lib/db';
 import { showAlert, showConfirm, showPrompt } from '../stores/useDialogStore';
 import type { User } from '../lib/db';
 import type { UserRole } from '../lib/database.types';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { queueOperation } from '../lib/sync';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 
 export function Settings() {
     const { t, i18n } = useTranslation();
@@ -52,9 +52,8 @@ export function Settings() {
         { id: 'advanced', icon: Database, label: 'Avancé' },
     ];
 
-    const usersData = useLiveQuery(async () => {
-        return await db.users.filter(u => u.active !== false).toArray();
-    });
+    const { data: rawUsers } = useSupabaseData<any>('users');
+    const usersData = rawUsers.filter(u => u.active !== false);
 
     const handleDeleteUser = async (user: User) => {
         if (!(await showConfirm(t('messages.deleteConfirm', 'Êtes-vous sûr de vouloir supprimer cet utilisateur ?')))) return;

@@ -4,7 +4,7 @@ import { showAlert } from '../stores/useDialogStore';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { FileText, Download, BarChart2, PieChart as PieChartIcon, Activity, TrendingUp, Package, Users } from 'lucide-react';
-import { db } from '../lib/db';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, format, parseISO, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -34,11 +34,29 @@ export function Reports() {
         avgTicketValue: 0
     });
 
-    useEffect(() => {
-        fetchReportData();
-    }, [period, reportType]);
+    // Use Supabase hooks
+    const { data: rawTickets, isLoading: isLoadingTickets } = useSupabaseData<any>('queue_tickets');
+    const { data: rawTicketServices, isLoading: isLoadingTicketServices } = useSupabaseData<any>('ticket_services');
+    const { data: rawServices, isLoading: isLoadingServices } = useSupabaseData<any>('services');
+    const { data: rawEmployees, isLoading: isLoadingEmployees } = useSupabaseData<any>('employees');
+    const { data: rawUsers, isLoading: isLoadingUsers } = useSupabaseData<any>('users');
+    const { data: rawProducts, isLoading: isLoadingProducts } = useSupabaseData<any>('products');
 
-    const fetchReportData = async () => {
+    const isDataLoading =
+        isLoadingTickets ||
+        isLoadingTicketServices ||
+        isLoadingServices ||
+        isLoadingEmployees ||
+        isLoadingUsers ||
+        isLoadingProducts;
+
+    useEffect(() => {
+        if (!isDataLoading) {
+            fetchReportData();
+        }
+    }, [period, reportType, isDataLoading, rawTickets, rawTicketServices, rawServices, rawEmployees, rawUsers, rawProducts]);
+
+    const fetchReportData = () => {
         setIsLoading(true);
         try {
             const now = new Date();
@@ -55,13 +73,13 @@ export function Reports() {
             }
 
             if (reportType === 'revenue') {
-                await fetchRevenueData(startDate, endDate);
+                fetchRevenueData(startDate, endDate);
             } else if (reportType === 'services') {
-                await fetchServicesData(startDate, endDate);
+                fetchServicesData(startDate, endDate);
             } else if (reportType === 'employees') {
-                await fetchEmployeesData(startDate, endDate);
+                fetchEmployeesData(startDate, endDate);
             } else if (reportType === 'inventory') {
-                await fetchInventoryData();
+                fetchInventoryData();
             }
 
         } catch (error) {
@@ -71,14 +89,12 @@ export function Reports() {
         }
     };
 
-    const fetchRevenueData = async (startDate: Date, endDate: Date) => {
-        const tickets = await db.queue_tickets
-            .filter(t => {
-                if (t.status !== 'completed') return false;
-                const completedDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at);
-                return completedDate >= startDate && completedDate <= endDate;
-            })
-            .toArray();
+    const fetchRevenueData = (startDate: Date, endDate: Date) => {
+        const tickets = rawTickets.filter(t => {
+            if (t.status !== 'completed') return false;
+            const completedDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at);
+            return completedDate >= startDate && completedDate <= endDate;
+        });
 
         let totalRev = 0;
         const groupedByDate: Record<string, number> = {};
@@ -104,14 +120,12 @@ export function Reports() {
         }));
     };
 
-    const fetchServicesData = async (startDate: Date, endDate: Date) => {
-        const tickets = await db.queue_tickets
-            .filter(t => {
-                if (t.status !== 'completed') return false;
-                const completedDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at);
-                return completedDate >= startDate && completedDate <= endDate;
-            })
-            .toArray();
+    const fetchServicesData = (startDate: Date, endDate: Date) => {
+        const tickets = rawTickets.filter(t => {
+            if (t.status !== 'completed') return false;
+            const completedDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at);
+            return completedDate >= startDate && completedDate <= endDate;
+        });
 
         if (tickets.length === 0) {
             setServicesData([]);
@@ -120,14 +134,11 @@ export function Reports() {
 
         const ticketIds = tickets.map(t => t.id);
 
-        const ticketServices = await db.ticket_services
-            .where('ticket_id')
-            .anyOf(ticketIds)
-            .toArray();
+        const ticketServices = rawTicketServices.filter(ts => ticketIds.includes(ts.ticket_id));
 
         const serviceCounts: Record<string, number> = {};
         for (const ts of ticketServices) {
-            const service = await db.services.get(ts.service_id);
+            const service = rawServices.find(s => s.id === ts.service_id);
             const serviceName = service?.name || 'Inconnu';
             serviceCounts[serviceName] = (serviceCounts[serviceName] || 0) + (ts.quantity || 1);
         }
@@ -142,23 +153,21 @@ export function Reports() {
         }
     };
 
-    const fetchEmployeesData = async (startDate: Date, endDate: Date) => {
-        const tickets = await db.queue_tickets
-            .filter(t => {
-                if (t.status !== 'completed' || !t.assigned_employee_id) return false;
-                const completedDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at);
-                return completedDate >= startDate && completedDate <= endDate;
-            })
-            .toArray();
+    const fetchEmployeesData = (startDate: Date, endDate: Date) => {
+        const tickets = rawTickets.filter(t => {
+            if (t.status !== 'completed' || !t.assigned_employee_id) return false;
+            const completedDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at);
+            return completedDate >= startDate && completedDate <= endDate;
+        });
 
         const empStats: Record<string, { tickets: number, revenue: number }> = {};
 
         for (const t of tickets) {
             let empName = 'Inconnu';
             if (t.assigned_employee_id) {
-                const emp = await db.employees.get(t.assigned_employee_id);
+                const emp = rawEmployees.find(e => e.id === t.assigned_employee_id);
                 if (emp && emp.user_id) {
-                    const user = await db.users.get(emp.user_id);
+                    const user = rawUsers.find(u => u.id === emp.user_id);
                     if (user) empName = user.full_name;
                 }
             }
@@ -176,10 +185,8 @@ export function Reports() {
         setEmployeesData(chartData);
     };
 
-    const fetchInventoryData = async () => {
-        const products = await db.products
-            .filter(p => (p as any).active !== false)
-            .toArray();
+    const fetchInventoryData = () => {
+        const products = rawProducts.filter(p => (p as any).active !== false);
 
         products.sort((a, b) => a.stock_quantity - b.stock_quantity);
         const top15 = products.slice(0, 15);

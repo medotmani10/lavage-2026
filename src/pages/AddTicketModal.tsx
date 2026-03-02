@@ -7,8 +7,7 @@ import { Select } from '../components/Select';
 import { Input } from '../components/Input';
 import { X, Check, Printer } from 'lucide-react';
 import { printTicket } from '../lib/printTicket';
-import { db } from '../lib/db';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { queueOperation } from '../lib/sync';
 
 interface AddTicketModalProps {
@@ -27,25 +26,28 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
   const [notes, setNotes] = useState('');
   const [requestedService, setRequestedService] = useState<'lavage' | 'vidange' | 'pneumatique'>('lavage');
 
-  const customers = useLiveQuery(async () => {
-    const all = await db.customers.toArray();
-    return all.filter(c => c.active !== false).map(c => ({
+  const { data: rawCustomers } = useSupabaseData<any>('customers');
+  const { data: rawVehicles } = useSupabaseData<any>('vehicles');
+  const { data: rawQueueTickets } = useSupabaseData<any>('queue_tickets');
+
+  const customers = rawCustomers
+    .filter(c => c.active !== false)
+    .map(c => ({
       id: c.id,
       full_name: c.full_name,
       phone: c.phone
-    })).sort((a, b) => a.full_name.localeCompare(b.full_name));
-  }) || [];
+    }))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
 
-  const vehicles = useLiveQuery(async () => {
-    if (!selectedCustomerId) return [];
-    const all = await db.vehicles.where('customer_id').equals(selectedCustomerId).toArray();
-    return all.map(v => ({
+  const vehicles = rawVehicles
+    .filter(v => v.customer_id === selectedCustomerId)
+    .map(v => ({
       id: v.id,
       plate_number: v.plate_number,
       brand: v.brand,
       model: v.model
-    })).sort((a, b) => a.plate_number.localeCompare(b.plate_number));
-  }, [selectedCustomerId]) || [];
+    }))
+    .sort((a, b) => a.plate_number.localeCompare(b.plate_number));
 
   // Quick Add State
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
@@ -147,9 +149,9 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
         const vehicle = vehicles.find(v => v.id === selectedVehicleId);
 
         // Count cars ahead locally
-        const carsAhead = await db.queue_tickets
-          .filter(t => (t.status === 'pending' || t.status === 'in_progress') && t.created_at < ticket.created_at)
-          .count();
+        const carsAhead = rawQueueTickets
+          .filter(t => (t.status === 'pending' || t.status === 'in_progress') && new Date(t.created_at) < new Date(ticket.created_at))
+          .length;
 
         // Use a slight delay to ensure the modal closes smoothly before print blocks the thread
         setTimeout(() => {

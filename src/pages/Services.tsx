@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { db } from '../lib/db';
-import { queueOperation } from '../lib/sync';
 import { showAlert, showConfirm } from '../stores/useDialogStore';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { queueOperation } from '../lib/sync';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -27,13 +26,8 @@ export function Services() {
     const [editingService, setEditingService] = useState<Service | null>(null);
     const [activeTab, setActiveTab] = useState<'lavage' | 'vidange' | 'pneumatique'>('lavage');
 
-    const servicesData = useLiveQuery(async () => {
-        const all = await db.services.toArray();
-        return all.filter(s => s.active !== false).sort((a, b) => a.name.localeCompare(b.name));
-    });
-
-    const isLoading = servicesData === undefined;
-    const services = (servicesData as any[]) as Service[] || [];
+    const { data: rawServices, isLoading } = useSupabaseData<Service>('services');
+    const services = rawServices.filter(s => (s as any).active !== false).sort((a, b) => a.name.localeCompare(b.name));
 
     const filteredServices = services.filter((service) => {
         const matchesTab = service.category === activeTab;
@@ -45,6 +39,8 @@ export function Services() {
     const handleDelete = async (service: Service) => {
         if (!(await showConfirm(t('messages.deleteConfirm')))) return;
 
+        // To be implemented via useSupabaseData or direct mutation if needed, 
+        // but for now keeping queueOperation approach for consistency
         await queueOperation('services', 'UPDATE', { ...service, active: false });
     };
 

@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { db } from '../lib/db';
-import { queueOperation } from '../lib/sync';
 import { showAlert, showConfirm } from '../stores/useDialogStore';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { queueOperation } from '../lib/sync';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -43,19 +42,13 @@ export function Inventory() {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  const productsData = useLiveQuery(async () => {
-    const all = await db.products.toArray();
-    return all.filter(p => (p as any).active !== false).sort((a, b) => a.name.localeCompare(b.name));
-  });
+  const { data: rawProducts, isLoading: isProductsLoading } = useSupabaseData<Product>('products');
+  const { data: rawSuppliers, isLoading: isSuppliersLoading } = useSupabaseData<Supplier>('suppliers');
 
-  const suppliersData = useLiveQuery(async () => {
-    const all = await db.suppliers.toArray();
-    return all.filter(s => s.active !== false).sort((a, b) => a.company_name.localeCompare(b.company_name));
-  });
+  const isLoading = isProductsLoading || isSuppliersLoading;
 
-  const isLoading = productsData === undefined || suppliersData === undefined;
-  const products = productsData as Product[] || [];
-  const suppliers = suppliersData as Supplier[] || [];
+  const products = rawProducts.filter(p => (p as any).active !== false).sort((a, b) => a.name.localeCompare(b.name));
+  const suppliers = rawSuppliers.filter(s => (s as any).active !== false).sort((a, b) => a.company_name.localeCompare(b.company_name));
 
   const filteredProducts = products.filter((product) => {
     const name = product.name;
@@ -90,7 +83,7 @@ export function Inventory() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">{t('navigation.inventory')}</h1>
           <p className="text-sm text-[var(--text-muted)] mt-1 font-medium">

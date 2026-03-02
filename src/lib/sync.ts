@@ -145,25 +145,52 @@ export async function pullChanges() {
 }
 
 // Helper to queue an operation to run locally and eventually push to Supabase
+// (Now online-first: tries Supabase immediately, falls back to queue if offline or failed)
 export async function queueOperation(table: string, operation: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) {
-    // Try acting locally first
-    if (operation === 'INSERT' || operation === 'UPDATE') {
-        await (db as any)[table].put(payload);
-    } else if (operation === 'DELETE') {
-        await (db as any)[table].delete(payload.id);
+    let successOnline = false;
+
+    if (navigator.onLine) {
+        try {
+            if (operation === 'INSERT') {
+                const { error } = await supabase.from(table as any).insert([payload] as any);
+                if (error && error.code !== '23505') throw error;
+            } else if (operation === 'UPDATE') {
+                const { error } = await supabase.from(table as any).update(payload as never).eq('id', payload.id as string);
+                if (error) throw error;
+            } else if (operation === 'DELETE') {
+                const { error } = await supabase.from(table as any).delete().eq('id', payload.id);
+                if (error) throw error;
+            }
+            successOnline = true;
+        } catch (e) {
+            console.warn('Online sync failed, falling back to offline queue', e);
+        }
     }
 
-    // Queue it for remote
-    await db.sync_queue.add({
-        table,
-        operation,
-        payload,
-        created_at: new Date().toISOString()
-    });
+    // Update local cache regardless so the UI feels instant
+    try {
+        if (operation === 'INSERT' || operation === 'UPDATE') {
+            await (db as any)[table].put(payload);
+        } else if (operation === 'DELETE') {
+            await (db as any)[table].delete(payload.id);
+        }
+    } catch (e) {
+        console.error("Local Dexie operation error:", e);
+    }
 
-    // Try immediate sync if online
-    if (navigator.onLine) {
-        pushChanges();
+    // Only queue if it failed online
+    if (!successOnline) {
+        await db.sync_queue.add({
+            table,
+            operation,
+            payload,
+            created_at: new Date().toISOString()
+        });
+
+        // Try background sync just in case navigator.onLine was wrong
+        if (navigator.onLine) {
+            pushChanges().catch(console.error);
+        }
     }
 }
 
