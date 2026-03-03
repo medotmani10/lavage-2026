@@ -17,40 +17,42 @@ export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
             setError(null);
 
             try {
+                // 1. Immediately load whatever is in Dexie for an instant UI update
+                if ((db as any)[tableName]) {
+                    const localData = await (db as any)[tableName].toArray();
+                    if (mounted) setData(localData);
+                }
+
+                // 2. Fetch fresh data from Supabase in the background
                 if (navigator.onLine) {
-                    // Fetch from Supabase
+                    setIsOffline(false);
                     const { data: supaData, error: supaError } = await supabase.from(tableName).select('*');
 
                     if (supaError) {
                         throw supaError;
                     }
 
-                    if (mounted) {
-                        setData(supaData as T[]);
-                        console.log(`[useSupabaseData] ${tableName} fetch success. Items:`, supaData?.length);
-                        // Silently cache to Dexie
-                        if (supaData && (db as any)[tableName]) {
-                            (db as any)[tableName].bulkPut(supaData).catch(console.error);
+                    if (mounted && supaData) {
+                        // 3. Upsert fresh data into Dexie
+                        if ((db as any)[tableName]) {
+                            await (db as any)[tableName].bulkPut(supaData);
+                            // 4. Reload from Dexie so we get a merged view of local (unsynced) + remote data
+                            const mergedData = await (db as any)[tableName].toArray();
+                            if (mounted) setData(mergedData);
+                        } else {
+                            // Fallback if no Dexie table config (unlikely)
+                            if (mounted) setData(supaData as T[]);
                         }
                     }
                 } else {
-                    // Fallback to local Dexie cache if offline
                     setIsOffline(true);
-                    if ((db as any)[tableName]) {
-                        const localData = await (db as any)[tableName].toArray();
-                        if (mounted) setData(localData);
-                    }
                 }
             } catch (err: any) {
                 console.error(`Error fetching data for ${tableName}:`, err);
                 if (mounted) {
                     setError(err);
                     setIsOffline(true);
-                    // Try to fall back to Dexie if Supabase call failed
-                    if ((db as any)[tableName]) {
-                        const localData = await (db as any)[tableName].toArray();
-                        setData(localData);
-                    }
+                    // Just rely on the Dexie data we fetched in step 1
                 }
             } finally {
                 if (mounted) setIsLoading(false);
