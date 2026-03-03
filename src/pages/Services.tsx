@@ -17,6 +17,7 @@ interface Service {
     duration_minutes: number;
     commission_rate: number;
     category: 'lavage' | 'vidange' | 'pneumatique';
+    active?: boolean;
 }
 
 export function Services() {
@@ -27,7 +28,7 @@ export function Services() {
     const [activeTab, setActiveTab] = useState<'lavage' | 'vidange' | 'pneumatique'>('lavage');
 
     const { data: rawServices, isLoading } = useSupabaseData<Service>('services');
-    const services = rawServices.filter(s => (s as any).active !== false).sort((a, b) => a.name.localeCompare(b.name));
+    const services = rawServices.filter(s => s.active !== false).sort((a, b) => a.name.localeCompare(b.name));
 
     const filteredServices = services.filter((service) => {
         const matchesTab = service.category === activeTab;
@@ -213,7 +214,7 @@ function ServiceModal({ service, defaultCategory, onClose }: ServiceModalProps) 
         e.preventDefault();
         setIsLoading(true);
 
-        const data: any = {
+        const data: Omit<Service, 'id' | 'active' | 'description'> & { description: string | null } = {
             name: formData.name,
             description: formData.description || null,
             price: parseFloat(formData.price) || 0,
@@ -260,7 +261,7 @@ function ServiceModal({ service, defaultCategory, onClose }: ServiceModalProps) 
                         <label className="block text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Catégorie</label>
                         <select
                             value={formData.category}
-                            onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
+                            onChange={(e) => setFormData({ ...formData, category: e.target.value as 'lavage' | 'vidange' | 'pneumatique' })}
                             className="w-full px-4 py-3 bg-[var(--bg-panel)] border border-[var(--border-lg)] rounded-xl focus:ring-2 focus:ring-primary-500 outline-none text-white text-sm cursor-pointer capitalize appearance-none"
                             required
                         >

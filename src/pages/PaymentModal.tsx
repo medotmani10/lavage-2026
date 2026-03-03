@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePOSStore } from '../stores/usePOSStore';
@@ -54,6 +55,7 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
         setShowVidangeCard(false);
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
   const change = (amountReceived as number) - total;
@@ -193,7 +195,8 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
             id: txId,
             type: 'revenue',
             amount: actualPaid,
-            description: `Paiement Ticket #${ticketId.slice(0, 8)}${remainingDebt > 0 ? ` (Acompte)` : ''}`,
+            description_fr: `Paiement Ticket #${ticketId.slice(0, 8)}${remainingDebt > 0 ? ` (Acompte)` : ''}`,
+            description_ar: `دفع التذكرة #${ticketId.slice(0, 8)}${remainingDebt > 0 ? ` (تسبيق)` : ''}`,
             reference_type: 'ticket',
             reference_id: ticketId,
             created_by: employeeId || null,

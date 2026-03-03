@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { supabase } from '../lib/supabase';
 import {
   LayoutDashboard,
@@ -50,6 +51,7 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { t } = useTranslation();
   const { user, hasRole, logout } = useAuthStore();
+  const { settings } = useSettingsStore();
   const navigate = useNavigate();
 
   const filteredNavigation = navigation.filter((item) => {
@@ -83,11 +85,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* ── Logo ── */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center rounded-xl w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 shadow-[var(--shadow-glow-orange)]">
-            <Wrench className="w-5 h-5 text-white" />
-          </div>
+          {settings?.logo_url ? (
+            <img src={settings.logo_url} alt="Logo" className="w-10 h-10 rounded-xl object-contain shadow-[var(--shadow-glow-orange)] bg-[var(--bg-base)] border border-[var(--border)]" />
+          ) : (
+            <div className="flex items-center justify-center rounded-xl w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 shadow-[var(--shadow-glow-orange)] shrink-0">
+              <Wrench className="w-5 h-5 text-white" />
+            </div>
+          )}
           <div>
-            <h1 className="text-sm font-bold text-white leading-tight">Lavage & Vidange</h1>
+            <h1 className="text-sm font-bold text-white leading-tight line-clamp-2">{settings?.station_name || 'Lavage & Vidange'}</h1>
             <p className="text-xs font-medium text-[var(--text-muted)]">ERP 2026</p>
           </div>
         </div>

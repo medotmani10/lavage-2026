@@ -59,31 +59,33 @@ export function TicketCard({ ticket, onUpdateStatus }: TicketCardProps) {
       {/* Header */}
       <div className="flex items-start justify-between mb-3 gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="font-bold text-white text-base">{ticket.ticket_number ? `#${ticket.ticket_number}` : '#...'}</span>
+          <div className="flex flex-col items-start gap-1 mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-white text-lg">{ticket.ticket_number ? `#${ticket.ticket_number}` : '#...'}</span>
 
-            {ticket.requested_service === 'lavage' && (
-              <span className="badge bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[10px]">Lavage</span>
-            )}
-            {ticket.requested_service === 'vidange' && (
-              <span className="badge bg-orange-500/20 text-orange-400 border border-orange-500/30 text-[10px]">Vidange</span>
-            )}
-            {ticket.requested_service === 'pneumatique' && (
-              <span className="badge bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[10px]">Pneumatique</span>
-            )}
+              {ticket.requested_service === 'lavage' && (
+                <span className="badge bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[10px]">Lavage</span>
+              )}
+              {ticket.requested_service === 'vidange' && (
+                <span className="badge bg-orange-500/20 text-orange-400 border border-orange-500/30 text-[10px]">Vidange</span>
+              )}
+              {ticket.requested_service === 'pneumatique' && (
+                <span className="badge bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[10px]">Pneumatique</span>
+              )}
 
-            {ticket.priority !== 'normal' && (
-              <span className={`badge ${ticket.priority === 'vip' ? 'badge-vip' : 'badge-pending'} text-[10px]`}>
-                {t(`queue.priority.${ticket.priority}`)}
-              </span>
-            )}
+              {ticket.priority !== 'normal' && (
+                <span className={`badge ${ticket.priority === 'vip' ? 'badge-vip' : 'badge-pending'} text-[10px]`}>
+                  {t(`queue.priority.${ticket.priority}`)}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[var(--text-muted)] font-medium">
+              Le {new Date(ticket.created_at).toLocaleDateString('fr-DZ', { day: '2-digit', month: 'long', year: 'numeric' })}
+              {' à '}
+              {new Date(ticket.created_at).toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' })}
+            </p>
           </div>
-          <p className="text-xs text-[var(--text-muted)] font-medium">
-            {new Date(ticket.created_at).toLocaleDateString('fr-DZ', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-            {' '}
-            {new Date(ticket.created_at).toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' })}
-          </p>
-          <p className="text-sm text-[var(--text-secondary)] truncate">
+          <p className="text-sm text-[var(--text-secondary)] truncate font-semibold">
             {ticket.customer?.full_name || 'Client Passager'}
           </p>
         </div>
@@ -124,57 +126,65 @@ export function TicketCard({ ticket, onUpdateStatus }: TicketCardProps) {
       </div>
 
       {/* Actions */}
-      {ticket.status === 'pending' && (
-        <div className="flex items-center gap-2 mt-auto">
+      {
+        ticket.status === 'pending' && (
+          <div className="flex items-center gap-2 mt-auto">
+            <Button
+              variant="primary"
+              size="sm"
+              className="flex-1"
+              onClick={() => onUpdateStatus(ticket.id, 'in_progress')}
+            >
+              <PlayCircle className="w-4 h-4" />
+              <span>Démarrer</span>
+            </Button>
+
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={async () => {
+                if (await showConfirm(t('queue.confirmCancel'))) {
+                  onUpdateStatus(ticket.id, 'cancelled');
+                }
+              }}
+              title="Annuler"
+            >
+              <AlertCircle className="w-4 h-4" />
+            </Button>
+          </div>
+        )
+      }
+
+      {
+        ticket.status === 'in_progress' && (
           <Button
-            variant="primary"
+            variant="success"
             size="sm"
-            className="flex-1"
-            onClick={() => onUpdateStatus(ticket.id, 'in_progress')}
+            className="w-full mt-auto"
+            onClick={openPayment}
           >
-            <PlayCircle className="w-4 h-4" />
-            <span>Démarrer</span>
+            <CreditCard className="w-4 h-4" />
+            <span>Encaisser & Terminer</span>
           </Button>
+        )
+      }
 
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={async () => {
-              if (await showConfirm(t('queue.confirmCancel'))) {
-                onUpdateStatus(ticket.id, 'cancelled');
-              }
-            }}
-            title="Annuler"
-          >
-            <AlertCircle className="w-4 h-4" />
-          </Button>
-        </div>
-      )}
+      {
+        showPayment && (
+          <PaymentModal
+            ticketId={ticket.id}
+            onClose={() => setShowPayment(false)}
+          />
+        )
+      }
 
-      {ticket.status === 'in_progress' && (
-        <Button
-          variant="success"
-          size="sm"
-          className="w-full mt-auto"
-          onClick={openPayment}
-        >
-          <CreditCard className="w-4 h-4" />
-          <span>Encaisser & Terminer</span>
-        </Button>
-      )}
-
-      {showPayment && (
-        <PaymentModal
-          ticketId={ticket.id}
-          onClose={() => setShowPayment(false)}
-        />
-      )}
-
-      {ticket.status === 'completed' && (
-        <div className="text-xs text-[var(--text-muted)] text-center mt-2 border-t border-[var(--border)] pt-3">
-          Terminé à: {new Date(ticket.completed_at!).toLocaleTimeString()}
-        </div>
-      )}
-    </div>
+      {
+        ticket.status === 'completed' && (
+          <div className="text-xs text-[var(--text-muted)] text-center mt-2 border-t border-[var(--border)] pt-3">
+            Terminé à: {new Date(ticket.completed_at!).toLocaleTimeString()}
+          </div>
+        )
+      }
+    </div >
   );
 }

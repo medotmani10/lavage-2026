@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '../components/Card';
@@ -20,13 +21,17 @@ import {
     X,
     Database,
     AlertTriangle,
-    RefreshCw
+    RefreshCw,
+    Clock,
+    Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { showAlert, showConfirm, showPrompt } from '../stores/useDialogStore';
 import type { User, UserRole } from '../types';
 import { queueOperation } from '../lib/sync';
 import { useSupabaseData } from '../hooks/useSupabaseData';
+import { useSettingsStore } from '../stores/useSettingsStore';
+import { useEffect } from 'react';
 
 export function Settings() {
     const { t, i18n } = useTranslation();
@@ -35,9 +40,81 @@ export function Settings() {
     const [showUserModal, setShowUserModal] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
 
-    const handleSave = () => {
+    const { settings, updateSettings } = useSettingsStore();
+
+    const [localSettings, setLocalSettings] = useState({
+        station_name: 'Lavage Vida',
+        phone: '0555 12 34 56',
+        address: 'Alger, Algérie',
+        rc: '16/00-0000000A00',
+        nif: '000000000000000',
+        logo_url: '',
+        opening_time: '08:00',
+        closing_time: '20:00',
+        working_days: ['Samedi', 'Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi']
+    });
+
+    useEffect(() => {
+        if (settings) {
+            setLocalSettings(prev => ({ ...prev, ...settings }));
+        }
+    }, [settings]);
+
+    const handleSave = async () => {
         setIsSaving(true);
-        setTimeout(() => setIsSaving(false), 1000); // Simulate save
+        try {
+            await updateSettings(localSettings);
+            showAlert('Paramètres enregistrés avec succès', 'success');
+        } catch (err: any) {
+            showAlert(`Erreur lors de la sauvegarde: ${err.message}`, 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                const MAX_DIMENSION = 500;
+
+                // Calculate the new dimensions while preserving aspect ratio
+                if (width > height) {
+                    if (width > MAX_DIMENSION) {
+                        height = Math.round((height * MAX_DIMENSION) / width);
+                        width = MAX_DIMENSION;
+                    }
+                } else {
+                    if (height > MAX_DIMENSION) {
+                        width = Math.round((width * MAX_DIMENSION) / height);
+                        height = MAX_DIMENSION;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+
+                // Draw the image onto the canvas with the new dimensions
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Compress to WebP or JPEG with quality 0.8
+                const compressedBase64 = canvas.toDataURL('image/webp', 0.8);
+
+                setLocalSettings(prev => ({ ...prev, logo_url: compressedBase64 }));
+            };
+            img.src = reader.result as string;
+        };
+        reader.readAsDataURL(file);
     };
 
     const tabs = [
@@ -109,13 +186,75 @@ export function Settings() {
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                    <Input label="Nom de l'établissement" defaultValue="Lavage Vida" />
-                                    <Input label="Numéro de Téléphone" defaultValue="0555 12 34 56" />
-                                    <div className="sm:col-span-2">
-                                        <Input label="Adresse Complète" defaultValue="Alger, Algérie" />
+                                    <div className="sm:col-span-2 flex items-center gap-4 p-4 bg-[var(--bg-base)] border border-[var(--border)] rounded-xl">
+                                        <div className="w-16 h-16 rounded-xl bg-[var(--bg-panel)] border border-dashed border-[var(--border-lg)] flex items-center justify-center shrink-0 overflow-hidden relative group cursor-pointer hover:border-primary-500/50 transition-colors">
+                                            {localSettings.logo_url ? (
+                                                <img src={localSettings.logo_url} alt="Logo" className="w-full h-full object-contain" />
+                                            ) : (
+                                                <ImageIcon className="w-8 h-8 text-[var(--text-muted)] group-hover:text-primary-500 transition-colors" />
+                                            )}
+                                            <input type="file" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="text-sm font-bold text-white">Logo de l'établissement</h3>
+                                            <p className="text-xs text-[var(--text-secondary)] mt-1">Format recommandé: PNG, JPG ou WEBP. Transparence supportée. Ce logo apparaîtra sur les reçus.</p>
+                                        </div>
+                                        <div className="relative overflow-hidden shrink-0">
+                                            <Button variant="secondary" className="pointer-events-none">
+                                                Parcourir...
+                                            </Button>
+                                            <input type="file" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                        </div>
                                     </div>
-                                    <Input label="Numéro de Registre de Commerce (RC)" defaultValue="16/00-0000000A00" />
-                                    <Input label="NIF (Numéro d'Identification Fiscale)" defaultValue="000000000000000" />
+
+                                    <Input label="Nom de l'établissement" value={localSettings.station_name} onChange={e => setLocalSettings(prev => ({ ...prev, station_name: e.target.value }))} />
+                                    <Input label="Numéro de Téléphone" value={localSettings.phone} onChange={e => setLocalSettings(prev => ({ ...prev, phone: e.target.value }))} />
+                                    <div className="sm:col-span-2">
+                                        <Input label="Adresse Complète" value={localSettings.address} onChange={e => setLocalSettings(prev => ({ ...prev, address: e.target.value }))} />
+                                    </div>
+                                    <Input label="Numéro de Registre de Commerce (RC)" value={localSettings.rc} onChange={e => setLocalSettings(prev => ({ ...prev, rc: e.target.value }))} />
+                                    <Input label="NIF (Numéro d'Identification Fiscale)" value={localSettings.nif} onChange={e => setLocalSettings(prev => ({ ...prev, nif: e.target.value }))} />
+                                </div>
+
+                                <div className="mt-8 flex items-center gap-3 pb-4 border-b border-[var(--border)]">
+                                    <div className="w-10 h-10 bg-[var(--bg-base)] border border-[var(--border-lg)] rounded-xl flex items-center justify-center">
+                                        <Clock className="w-5 h-5 text-primary-500" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-white">Horaires d'Ouverture</h2>
+                                        <p className="text-xs text-[var(--text-muted)] font-medium">Définissez les heures d'ouverture et de fermeture de la station.</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                    <Input type="time" label="Heure d'ouverture" value={localSettings.opening_time} onChange={e => setLocalSettings(prev => ({ ...prev, opening_time: e.target.value }))} />
+                                    <Input type="time" label="Heure de fermeture" value={localSettings.closing_time} onChange={e => setLocalSettings(prev => ({ ...prev, closing_time: e.target.value }))} />
+                                    <div className="sm:col-span-2 p-4 bg-[var(--bg-base)] border border-[var(--border)] rounded-xl">
+                                        <h3 className="text-sm font-bold text-white mb-4">Jours d'ouverture</h3>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                            {['Samedi', 'Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'].map((day) => (
+                                                <label key={day} className="flex items-center gap-3 p-3 rounded-xl cursor-pointer bg-[var(--bg-panel)] border border-[var(--border-lg)] hover:border-primary-500/50 transition-colors">
+                                                    <div className="relative flex items-start">
+                                                        <div className="flex h-5 items-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 bg-[var(--bg-base)]"
+                                                                checked={localSettings.working_days.includes(day)}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) {
+                                                                        setLocalSettings(prev => ({ ...prev, working_days: [...prev.working_days, day] }));
+                                                                    } else {
+                                                                        setLocalSettings(prev => ({ ...prev, working_days: prev.working_days.filter(d => d !== day) }));
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-sm font-semibold text-white">{day}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}

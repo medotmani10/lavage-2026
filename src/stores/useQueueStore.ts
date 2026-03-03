@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { queueOperation } from '../lib/sync';
+import { useSettingsStore } from './useSettingsStore';
 import type { QueueTicket, TicketStatus } from '../types';
 
 interface QueueState {
@@ -43,6 +45,19 @@ export const useQueueStore = create<QueueState>((set, get) => ({
         throw new Error("Impossible de charger les tickets: Aucune connexion Internet.");
       }
 
+      const settings = useSettingsStore.getState().settings;
+      const todayStart = new Date();
+      if (settings?.opening_time) {
+        const [hours, minutes] = settings.opening_time.split(':').map(Number);
+        todayStart.setHours(hours, minutes, 0, 0);
+        const now = new Date();
+        if (now < todayStart) {
+          todayStart.setDate(todayStart.getDate() - 1);
+        }
+      } else {
+        todayStart.setHours(0, 0, 0, 0);
+      }
+
       let query = supabase
         .from('queue_tickets')
         .select(`
@@ -51,6 +66,7 @@ export const useQueueStore = create<QueueState>((set, get) => ({
           vehicle:vehicles(id, plate_number, brand, model, year),
           employee:employees(id, position, user:users(full_name))
         `)
+        .gte('created_at', todayStart.toISOString())
         .order('created_at', { ascending: true });
 
       if (status && status.length > 0) {
@@ -100,14 +116,27 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     try {
       const newTicketId = crypto.randomUUID();
 
-      // Generate ticket number — fetch ALL existing ticket numbers with this prefix
-      // and find the MAX client-side (more reliable than ORDER BY on strings)
+      // Generate ticket number reset daily according to opening time
+      const settings = useSettingsStore.getState().settings;
+      const todayStart = new Date();
+      if (settings?.opening_time) {
+        const [hours, minutes] = settings.opening_time.split(':').map(Number);
+        todayStart.setHours(hours, minutes, 0, 0);
+        const now = new Date();
+        if (now < todayStart) {
+          todayStart.setDate(todayStart.getDate() - 1);
+        }
+      } else {
+        todayStart.setHours(0, 0, 0, 0);
+      }
+
       const prefix = ticketData.requested_service === 'lavage' ? 'L'
         : ticketData.requested_service === 'vidange' ? 'V' : 'P';
 
       const { data: allWithPrefix } = await supabase
         .from('queue_tickets')
         .select('ticket_number')
+        .gte('created_at', todayStart.toISOString())
         .ilike('ticket_number', `${prefix}%`) as { data: any[] | null };
 
       const lastNum = (allWithPrefix || []).reduce((max: number, t: any) => {

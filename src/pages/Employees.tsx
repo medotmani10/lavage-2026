@@ -32,6 +32,7 @@ interface UserOption {
   full_name: string;
   email: string;
   role: string;
+  active?: boolean;
 }
 
 export function Employees() {
@@ -46,7 +47,7 @@ export function Employees() {
   const isLoading = isEmpLoading || isUserLoading;
 
   const employees = rawEmployees
-    .filter(e => (e as any).active !== false)
+    .filter(e => e.active !== false)
     .map(e => {
       const user = rawUsers.find(u => u.id === e.user_id);
       return {
@@ -61,7 +62,7 @@ export function Employees() {
     .sort((a, b) => a.position.localeCompare(b.position));
 
   const userOptions = rawUsers
-    .filter(u => (u as any).active !== false)
+    .filter(u => u.active !== false)
     .map(u => ({ id: u.id, full_name: u.full_name, email: u.email, role: u.role }))
     .sort((a, b) => a.full_name.localeCompare(b.full_name));
 

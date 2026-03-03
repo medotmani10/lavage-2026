@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showAlert } from '../stores/useDialogStore';
@@ -60,6 +61,7 @@ export function Reports() {
         if (!isDataLoading) {
             fetchReportData();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [period, reportType, isDataLoading, rawTickets, rawTicketServices, rawTicketProducts, rawcommissions, rawServices, rawEmployees, rawUsers, rawProducts]);
 
     const fetchReportData = () => {
@@ -220,7 +222,7 @@ export function Reports() {
 
         setServicesData(chartData);
         if (chartData.length > 0) {
-            setSummary(prev => ({ ...prev, topService: chartData[0].name }));
+            setSummary((prev: any) => ({ ...prev, topService: chartData[0].name }));
         }
     };
 
@@ -391,7 +393,7 @@ export function Reports() {
                                             dataKey="value"
                                             label={({ name, percent }: any) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
                                         >
-                                            {servicesData.map((_entry, index) => (
+                                            {servicesData.map((_entry: any, index: number) => (
                                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                             ))}
                                         </Pie>
@@ -424,7 +426,7 @@ export function Reports() {
                                         <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', color: '#fff' }} />
                                         <Legend verticalAlign="top" height={36} />
                                         <Bar dataKey="Stock" fill="#3B82F6" radius={[4, 4, 0, 0]}>
-                                            {inventoryData.map((entry, index) => (
+                                            {inventoryData.map((entry: any, index: number) => (
                                                 <Cell key={`cell-${index}`} fill={entry.Stock <= entry.Minimum ? '#EF4444' : '#3B82F6'} />
                                             ))}
                                         </Bar>
@@ -453,7 +455,7 @@ export function Reports() {
     );
 }
 
-function ReportNavButton({ active, onClick, icon: Icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) {
+function ReportNavButton({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: React.ComponentType<{ className?: string }>; label: string }) {
     return (
         <button
             onClick={onClick}
@@ -470,7 +472,7 @@ function ReportNavButton({ active, onClick, icon: Icon, label }: { active: boole
     );
 }
 
-function StatCard({ icon: Icon, label, value, color }: { icon: any, label: string, value: string, color: string }) {
+function StatCard({ icon: Icon, label, value, color }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; color: string }) {
     return (
         <Card className="bg-[var(--bg-panel)] p-4 flex items-center gap-4">
             <div className={`w-12 h-12 rounded-xl bg-[var(--bg-base)] flex items-center justify-center ${color}`}>

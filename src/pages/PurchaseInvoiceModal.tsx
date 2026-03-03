@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { queueOperation } from '../lib/sync';
@@ -42,7 +43,7 @@ export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoi
     const { data: rawSuppliers } = useSupabaseData<any>('suppliers');
 
     const products = rawProducts.filter(p => p.active !== false).sort((a, b) => a.name.localeCompare(b.name));
-    const suppliers = rawSuppliers.filter(s => s.active !== false).sort((a, b) => a.company_name.localeCompare(b.company_name));
+    const suppliers = rawSuppliers.filter(s => s.active !== false).sort((a, b) => (a.company_name || a.name || '').localeCompare(b.company_name || b.name || ''));
 
     const totalAmount = lines.reduce((sum, line) => sum + line.subtotal, 0);
     const effectivePaid = Math.min(Number(paidAmount) || 0, totalAmount);
@@ -148,6 +149,7 @@ export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoi
                         stock_quantity: (product.stock_quantity || 0) + line.quantity,
                         cost_price: line.unit_cost, // Update to new purchase price
                         unit_price: line.unit_price, // Update selling price
+                        supplier_id: supplierId, // Link product to this supplier
                         updated_at: now
                     });
 
@@ -181,7 +183,8 @@ export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoi
                     id: crypto.randomUUID(),
                     type: 'expense',
                     amount: effectivePaid,
-                    description: `Paiement fournisseur (Achat de stock) - Facture ${invoiceNumber || 'N/A'}`,
+                    description_fr: `Paiement fournisseur (Achat de stock) - Facture ${invoiceNumber || 'N/A'}`,
+                    description_ar: `دفع للمورد (شراء مخزون) - فاتورة ${invoiceNumber || 'N/A'}`,
                     reference_type: 'purchase_invoice',
                     reference_id: invoiceId,
                     created_by: null,
@@ -241,7 +244,7 @@ export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoi
                                 onChange={(e) => setSupplierId(e.target.value)}
                                 options={[
                                     { value: '', label: 'Sélectionner un fournisseur...' },
-                                    ...(suppliers?.map(s => ({ value: s.id, label: s.company_name })) || [])
+                                    ...(suppliers?.map(s => ({ value: s.id, label: s.company_name || s.name || 'Fournisseur' })) || [])
                                 ]}
                                 required
                             />

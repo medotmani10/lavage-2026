@@ -6,7 +6,8 @@ import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
-import { Plus, Search, Truck, Edit2, Trash2, Phone, Mail, MapPin, X } from 'lucide-react';
+import { Plus, Search, Truck, Edit2, Trash2, Phone, Mail, MapPin, X, ArrowUpRight } from 'lucide-react';
+import { PaySupplierModal } from '../components/PaySupplierModal';
 
 interface Supplier {
   id: string;
@@ -17,16 +18,19 @@ interface Supplier {
   address?: string;
   balance_owed: number;
   credit_limit?: number;
+  active?: boolean;
 }
 
 export function Suppliers() {
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showPayModal, setShowPayModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [payingSupplierId, setPayingSupplierId] = useState<string | null>(null);
 
   const { data: rawSuppliers, isLoading } = useSupabaseData<Supplier>('suppliers');
-  const suppliers = rawSuppliers.filter(s => (s as any).active !== false).sort((a, b) => a.company_name.localeCompare(b.company_name));
+  const suppliers = rawSuppliers.filter(s => s.active !== false).sort((a, b) => a.company_name.localeCompare(b.company_name));
 
   const filteredSuppliers = suppliers.filter((supplier) => {
     const query = searchQuery.toLowerCase();
@@ -115,18 +119,32 @@ export function Suppliers() {
                 setShowModal(true);
               }}
               onDelete={() => handleDelete(supplier)}
+              onPay={() => {
+                setPayingSupplierId(supplier.id);
+                setShowPayModal(true);
+              }}
             />
           ))}
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modals */}
       {showModal && (
         <SupplierModal
           supplier={editingSupplier}
           onClose={() => {
             setShowModal(false);
             setEditingSupplier(null);
+          }}
+        />
+      )}
+
+      {showPayModal && (
+        <PaySupplierModal
+          supplierId={payingSupplierId || undefined}
+          onClose={() => {
+            setShowPayModal(false);
+            setPayingSupplierId(null);
           }}
         />
       )}
@@ -138,9 +156,10 @@ interface SupplierCardProps {
   supplier: Supplier;
   onEdit: () => void;
   onDelete: () => void;
+  onPay: () => void;
 }
 
-function SupplierCard({ supplier, onEdit, onDelete }: SupplierCardProps) {
+function SupplierCard({ supplier, onEdit, onDelete, onPay }: SupplierCardProps) {
   const { t } = useTranslation();
 
   return (
@@ -159,6 +178,15 @@ function SupplierCard({ supplier, onEdit, onDelete }: SupplierCardProps) {
         </div>
 
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {supplier.balance_owed > 0 && (
+            <button
+              onClick={onPay}
+              className="p-2 hover:bg-success-500/10 rounded-lg transition-colors border border-transparent hover:border-success-500/30"
+              title="Payer une partie"
+            >
+              <ArrowUpRight className="w-4 h-4 text-success-500" />
+            </button>
+          )}
           <button
             onClick={onEdit}
             className="p-2 hover:bg-primary-500/10 rounded-lg transition-colors border border-transparent hover:border-primary-500/30"

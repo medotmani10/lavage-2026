@@ -1,0 +1,6 @@
+src-tauri/
+temp.tsx
+test.js
+dist/
+node_modules/
+customer-app/dist/

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
 import { supabase } from '../lib/supabase';
 import type { UserRole, User } from '../types';
+import type { Session } from '@supabase/supabase-js';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -19,7 +20,7 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
     let mounted = true;
 
     const checkAuth = async () => {
-      let session: any = null;
+      let session: Session | null = null;
       try {
         const { data } = await supabase.auth.getSession();
         session = data.session;
@@ -46,7 +47,7 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
             .single();
 
           if (userData && mounted) {
-            useAuthStore.getState().setUser(userData as any as User);
+            useAuthStore.getState().setUser(userData as User);
           } else {
             // User not in users table — sign out and redirect
             await supabase.auth.signOut();

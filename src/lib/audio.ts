@@ -1,6 +1,7 @@
 export const playNotificationChime = () => {
     try {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const AudioCtx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        const ctx = new AudioCtx!();
 
         // Low-pass to High-pass arpeggio (luxurious)
         const notes = [

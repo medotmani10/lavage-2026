@@ -5,14 +5,15 @@ import { useNotificationStore } from '../stores/useNotificationStore';
 export const SUPABASE_UPDATE_EVENT = 'supabase-data-update';
 
 // Helper to queue an operation (online-only: writes directly to Supabase)
-export async function queueOperation(table: string, operation: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) {
+export async function queueOperation(table: string, operation: 'INSERT' | 'UPDATE' | 'DELETE', payload: Record<string, unknown>) {
     if (!navigator.onLine) {
         throw new Error("Impossible d'enregistrer: Aucune connexion Internet.");
     }
 
     try {
         if (operation === 'INSERT') {
-            const { error } = await supabase.from(table as any).insert([payload] as any);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase.from(table as never) as any).insert([payload]);
             if (error) {
                 // Provide human-readable error messages
                 if (error.code === '23505') throw new Error(`Enregistrement déjà existant (doublon): ${error.message}`);
@@ -21,20 +22,22 @@ export async function queueOperation(table: string, operation: 'INSERT' | 'UPDAT
                 throw error;
             }
         } else if (operation === 'UPDATE') {
-            const { error } = await supabase.from(table as any).update(payload as never).eq('id', payload.id as string);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase.from(table as never) as any).update(payload).eq('id', payload.id as string);
             if (error) {
                 if (error.code === '42703') throw new Error(`Colonne inconnue: ${error.message}`);
                 throw error;
             }
         } else if (operation === 'DELETE') {
-            const { error } = await supabase.from(table as any).delete().eq('id', payload.id);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase.from(table as never) as any).delete().eq('id', payload.id as string);
             if (error) throw error;
         }
 
         // Notify all components subscribed to data changes to re-fetch
         window.dispatchEvent(new CustomEvent(SUPABASE_UPDATE_EVENT));
-    } catch (e: any) {
-        console.error(`Supabase [${operation}] on [${table}] failed:`, e?.message || e);
+    } catch (e: unknown) {
+        console.error(`Supabase [${operation}] on [${table}] failed:`, e);
         throw e; // Propagate error to UI
     }
 }
@@ -44,7 +47,7 @@ export function setupRealtimeSync(retryCount = 0): () => void {
     const MAX_RETRIES = 3;
     const channel = supabase.channel('schema-db-changes');
 
-    const processPayload = (payload: any) => {
+    const processPayload = (payload: { table?: string; eventType?: string; new?: Record<string, unknown> }) => {
         const { table, eventType, new: newRec } = payload;
         console.log(`Realtime: ${eventType} on ${table}`);
 
@@ -62,8 +65,8 @@ export function setupRealtimeSync(retryCount = 0): () => void {
                     title: 'Nouveau Ticket Kiosque',
                     message: `Le ticket #${newRec.ticket_number || 'K???'} vient d'être créé.`,
                     metadata: {
-                        ticket_id: newRec.id,
-                        ticket_number: newRec.ticket_number
+                        ticket_id: String(newRec.id ?? ''),
+                        ticket_number: String(newRec.ticket_number ?? '')
                     }
                 });
             } catch (notifErr) {

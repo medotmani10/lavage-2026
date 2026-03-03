@@ -8,12 +8,14 @@ interface CardProps {
   action?: ReactNode;
   noPadding?: boolean;
   glow?: boolean;
+  onClick?: () => void;
 }
 
-export function Card({ children, className = '', title, description, action, noPadding, glow }: CardProps) {
+export function Card({ children, className = '', title, description, action, noPadding, glow, onClick }: CardProps) {
   return (
     <div
-      className={`animate-fade-in bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-lg)] overflow-hidden ${glow ? 'shadow-[var(--shadow-glow-orange)] border-primary-500/30' : 'shadow-[var(--shadow-card)]'
+      onClick={onClick}
+      className={`animate-fade-in bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-lg)] ${className.includes('overflow-') ? '' : 'overflow-hidden'} ${glow ? 'shadow-[var(--shadow-glow-orange)] border-primary-500/30' : 'shadow-[var(--shadow-card)]'
         } ${className}`}
     >
       {(title || description || action) && (

@@ -12,6 +12,8 @@ interface DialogOptions {
     promptPlaceholder?: string;
 }
 
+type DialogResult = string | boolean | null;
+
 interface DialogState {
     isOpen: boolean;
     message: string;
@@ -22,10 +24,10 @@ interface DialogState {
     promptPlaceholder?: string;
     confirmText: string;
     cancelText: string;
-    resolvePromise: ((value: any) => void) | null;
+    resolvePromise: ((value: DialogResult) => void) | null;
 
-    openDialog: (options: DialogOptions, isConfirm: boolean) => Promise<any>;
-    closeDialog: (result: any) => void;
+    openDialog: (options: DialogOptions, isConfirm: boolean) => Promise<DialogResult>;
+    closeDialog: (result: DialogResult) => void;
 }
 
 export const useDialogStore = create<DialogState>((set, get) => ({

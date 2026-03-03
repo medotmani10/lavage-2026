@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import { X, Car, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';

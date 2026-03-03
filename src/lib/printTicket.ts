@@ -1,6 +1,19 @@
 import { showAlert } from '../stores/useDialogStore';
 
-export const printTicket = (ticket: any, customer: any, vehicle: any, carsAhead: number = 0) => {
+interface PrintTicketObj {
+  ticket_number?: string;
+  requested_service?: string;
+}
+interface PrintCustomerObj {
+  full_name?: string;
+}
+interface PrintVehicleObj {
+  plate_number?: string;
+  brand?: string;
+  model?: string;
+}
+
+export const printTicket = (ticket: PrintTicketObj, customer: PrintCustomerObj, vehicle: PrintVehicleObj, carsAhead: number = 0) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
     showAlert('Veuillez autoriser les fenêtres contextuelles (pop-ups) pour imprimer le ticket.', 'warning');

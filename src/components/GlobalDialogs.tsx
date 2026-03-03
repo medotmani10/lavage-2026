@@ -9,7 +9,7 @@ export function GlobalDialogs() {
 
     useEffect(() => {
         if (isOpen) {
-            setInputValue('');
+            setTimeout(() => setInputValue(''), 0);
         }
     }, [isOpen]);
 

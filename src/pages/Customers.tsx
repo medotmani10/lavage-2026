@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showAlert, showConfirm } from '../stores/useDialogStore';
@@ -6,9 +7,10 @@ import { useSupabaseData } from '../hooks/useSupabaseData';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
-import { Plus, Search, User, Mail, MapPin, Edit2, Trash2, Car, History } from 'lucide-react';
+import { Plus, Search, User, Mail, MapPin, Edit2, Trash2, Car, History, DollarSign } from 'lucide-react';
 import { CustomerHistoryPanel } from './CustomerHistoryPanel';
 import { CustomerVehiclesPanel } from './CustomerVehiclesPanel';
+import { CollectDebtModal } from '../components/CollectDebtModal';
 import type { Customer } from '../types';
 
 export function Customers() {
@@ -18,6 +20,8 @@ export function Customers() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [vehiclesCustomer, setVehiclesCustomer] = useState<Customer | null>(null);
+  const [showCollectModal, setShowCollectModal] = useState(false);
+  const [collectingCustomerId, setCollectingCustomerId] = useState<string | null>(null);
 
   const { data: allCustomers, isLoading, error } = useSupabaseData<Customer>('customers');
   // Include customers where active is true OR null/undefined (never been explicitly set to false)
@@ -112,6 +116,11 @@ export function Customers() {
               }}
               onClick={() => setHistoryCustomer(customer as any)}
               onManageVehicles={() => setVehiclesCustomer(customer as any)}
+              onCollect={(e) => {
+                e.stopPropagation();
+                setCollectingCustomerId(customer.id);
+                setShowCollectModal(true);
+              }}
             />
           ))}
         </div>
@@ -139,6 +148,16 @@ export function Customers() {
         isOpen={!!vehiclesCustomer}
         onClose={() => setVehiclesCustomer(null)}
       />
+
+      {showCollectModal && (
+        <CollectDebtModal
+          customerId={collectingCustomerId || undefined}
+          onClose={() => {
+            setShowCollectModal(false);
+            setCollectingCustomerId(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -149,9 +168,10 @@ interface CustomerCardProps {
   onDelete: (e: React.MouseEvent) => void;
   onClick: () => void;
   onManageVehicles: () => void;
+  onCollect: (e: React.MouseEvent) => void;
 }
 
-function CustomerCard({ customer, onEdit, onDelete, onClick, onManageVehicles }: CustomerCardProps) {
+function CustomerCard({ customer, onEdit, onDelete, onClick, onManageVehicles, onCollect }: CustomerCardProps) {
   const { t } = useTranslation();
 
   return (
@@ -169,6 +189,15 @@ function CustomerCard({ customer, onEdit, onDelete, onClick, onManageVehicles }:
           </div>
 
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {customer.current_balance > 0 && (
+              <button
+                onClick={onCollect}
+                className="p-1.5 hover:bg-success-500/10 rounded-lg transition-colors border border-transparent hover:border-success-500/30"
+                title="Encaisser dette"
+              >
+                <DollarSign className="w-4 h-4 text-success-500" />
+              </button>
+            )}
             <button
               onClick={onEdit}
               className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg transition-colors border border-transparent hover:border-[var(--border-lg)]"

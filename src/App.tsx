@@ -7,10 +7,17 @@ import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './hooks/useAuth';
 import { setupRealtimeSync } from './lib/sync';
 import { useAuthStore } from './stores/useAuthStore';
+import { useSettingsStore } from './stores/useSettingsStore';
 import { GlobalDialogs } from './components/GlobalDialogs';
 
 function App() {
   const { isAuthenticated } = useAuthStore();
+  const { fetchSettings } = useSettingsStore();
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
   useEffect(() => {
     // Setup Realtime subscriptions to receive live data updates
     const cleanupRealtime = setupRealtimeSync();

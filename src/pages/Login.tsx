@@ -32,17 +32,17 @@ export function Login() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_IN' && session) {
-          let userData: any = null;
+          let userData: User | null = null;
           if (navigator.onLine) {
             try {
               const { data } = await supabase.from('users').select('*').eq('id', session.user.id).single();
               if (data) {
-                userData = data;
+                userData = data as User;
               }
             } catch (e) { console.error("Error fetching user data on auth change:", e) }
           }
           if (userData) {
-            setUser(userData as any as User);
+            setUser(userData);
             setLoading(false);
             navigate('/dashboard');
           }
@@ -64,14 +64,14 @@ export function Login() {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
       if (data.user && data.session) {
-        let userData: any = null;
+        let userData: User | null = null;
         if (navigator.onLine) {
           try {
             const { data: uData, error: userError } = await supabase
               .from('users').select('*').eq('id', data.user.id).single();
             if (userError) throw userError;
             if (uData) {
-              userData = uData;
+              userData = uData as User;
             }
           } catch (e) {
             console.error('Fetch user error', e);
@@ -79,7 +79,7 @@ export function Login() {
         }
         if (!userData) throw new Error('User profile not found.');
 
-        setUser(userData as any as User);
+        setUser(userData);
         navigate('/dashboard');
       }
     } catch (err: unknown) {

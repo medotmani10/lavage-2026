@@ -26,12 +26,10 @@ interface Product {
   tire_diameter?: number;
   oil_viscosity?: string;
   oil_volume?: number;
+  active?: boolean;
 }
 
-interface Supplier {
-  id: string;
-  company_name: string;
-}
+
 
 export function Inventory() {
   const { t } = useTranslation();
@@ -43,12 +41,10 @@ export function Inventory() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const { data: rawProducts, isLoading: isProductsLoading } = useSupabaseData<Product>('products');
-  const { data: rawSuppliers, isLoading: isSuppliersLoading } = useSupabaseData<Supplier>('suppliers');
 
-  const isLoading = isProductsLoading || isSuppliersLoading;
+  const isLoading = isProductsLoading;
 
-  const products = rawProducts.filter(p => (p as any).active !== false).sort((a, b) => a.name.localeCompare(b.name));
-  const suppliers = rawSuppliers.filter(s => (s as any).active !== false).sort((a, b) => a.company_name.localeCompare(b.company_name));
+  const products = rawProducts.filter(p => p.active !== false).sort((a, b) => a.name.localeCompare(b.name));
 
   const filteredProducts = products.filter((product) => {
     const name = product.name;
@@ -201,7 +197,6 @@ export function Inventory() {
                   <th className="px-6 py-4">{t('inventory.category')}</th>
                   <th className="px-6 py-4">{t('inventory.stock')}</th>
                   <th className="px-6 py-4">{t('inventory.unitPrice')}</th>
-                  <th className="px-6 py-4">{t('inventory.supplier')}</th>
                   <th className="px-6 py-4 text-right">{t('common.actions')}</th>
                 </tr>
               </thead>
@@ -248,9 +243,6 @@ export function Inventory() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap font-medium text-primary-400">
                       {product.unit_price} DA
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--text-secondary)]">
-                      {suppliers.find(s => s.id === product.supplier_id)?.company_name || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
@@ -333,7 +325,13 @@ function ProductModal({ product, onClose }: ProductModalProps) {
     e.preventDefault();
     setIsLoading(true);
 
-    const data: any = {
+    type ProductData = {
+      name: string; category: string; sku: string; stock_quantity: number; min_stock: number;
+      unit_price: number; cost_price: number; supplier_id: string | null; brand: string | null;
+      tire_width?: number | null; tire_height?: number | null; tire_diameter?: number | null;
+      oil_viscosity?: string | null; oil_volume?: number | null; active?: boolean;
+    };
+    const data: ProductData = {
       name: formData.name,
       category: formData.category,
       sku: formData.sku,

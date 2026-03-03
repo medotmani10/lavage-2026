@@ -24,14 +24,14 @@ export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
 
                 setIsOffline(false);
                 const { data: supaData, error: supaError } = await supabase
-                    .from(tableName as any)
+                    .from(tableName as string)
                     .select('*');
 
                 if (supaError) throw supaError;
                 if (mounted && supaData) setData(supaData as T[]);
-            } catch (err: any) {
+            } catch (err: unknown) {
                 if (mounted) {
-                    setError(err);
+                    setError(err instanceof Error ? err : new Error(String(err)));
                     if (!navigator.onLine) setIsOffline(true);
                 }
             } finally {

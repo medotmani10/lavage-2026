@@ -2,12 +2,39 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { useQueueStore } from '../stores/useQueueStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { Button } from '../components/Button';
 import { TicketCard } from './TicketCard';
 import { AddTicketModal } from './AddTicketModal';
 import { TicketFilters } from './TicketFilters';
-import { RefreshCw, Plus, Ticket, PlayCircle, Clock, CheckCircle } from 'lucide-react';
+import { RefreshCw, Plus, Ticket, PlayCircle, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
 import type { TicketStatus, TicketPriority } from '../types';
+
+interface ColumnHeaderProps {
+  title: string;
+  count: number;
+  colorClass: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const ColumnHeader = ({ title, count, colorClass, icon: Icon }: ColumnHeaderProps) => (
+  <div className="flex items-center justify-between mb-4 border-b border-[var(--border)] pb-3">
+    <div className="flex items-center gap-2">
+      <Icon className={`w-5 h-5 ${colorClass}`} />
+      <h2 className="text-lg font-semibold text-white">{title}</h2>
+    </div>
+    <span className="bg-[var(--bg-panel)] text-[var(--text-secondary)] border border-[var(--border)] px-2.5 py-0.5 rounded-full text-xs font-bold">
+      {count}
+    </span>
+  </div>
+);
+
+const EmptyState = ({ text }: { text: string }) => (
+  <div className="flex flex-col items-center justify-center p-8 text-center bg-[var(--bg-surface)] border border-dashed border-[var(--border-lg)] rounded-xl">
+    <Ticket className="w-10 h-10 mb-3 text-[var(--text-muted)] opacity-50" />
+    <p className="text-sm font-medium text-[var(--text-secondary)]">{text}</p>
+  </div>
+);
 
 export function Queue() {
   const { t } = useTranslation();
@@ -19,17 +46,47 @@ export function Queue() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const { settings } = useSettingsStore();
+
+  const isStationOpen = (() => {
+    if (!settings) return true; // Default to true if settings aren't loaded yet
+
+    const now = new Date();
+    const currentDayConfigDayNames = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+    const currentDayName = currentDayConfigDayNames[now.getDay()];
+
+    if (!settings.working_days.includes(currentDayName)) {
+      return false;
+    }
+
+    if (settings.opening_time && settings.closing_time) {
+      const [openHour, openMinute] = settings.opening_time.split(':').map(Number);
+      const [closeHour, closeMinute] = settings.closing_time.split(':').map(Number);
+
+      const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
+      const openTimeInMinutes = openHour * 60 + openMinute;
+      const closeTimeInMinutes = closeHour * 60 + closeMinute;
+
+      return currentTimeInMinutes >= openTimeInMinutes && currentTimeInMinutes <= closeTimeInMinutes;
+    }
+
+    return true;
+  })();
+
   useEffect(() => {
     fetchTickets();
     const unsubscribe = subscribeToTickets();
 
     if (searchParams.get('new') === 'true') {
-      setShowAddModal(true);
-      // Clean up the URL parameter but keep the modal open
-      setSearchParams({});
+      setTimeout(() => {
+        setShowAddModal(true);
+        // Clean up the URL parameter but keep the modal open
+        setSearchParams({});
+      }, 0);
     }
 
     return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Filter tickets
@@ -57,31 +114,7 @@ export function Queue() {
   const inProgressTickets = filteredTickets.filter((t) => t.status === 'in_progress');
   const completedTickets = filteredTickets.filter((t) => t.status === 'completed');
 
-interface ColumnHeaderProps {
-  title: string;
-  count: number;
-  colorClass: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
 
-const ColumnHeader = ({ title, count, colorClass, icon: Icon }: ColumnHeaderProps) => (
-  <div className="flex items-center justify-between mb-4 border-b border-[var(--border)] pb-3">
-    <div className="flex items-center gap-2">
-      <Icon className={`w-5 h-5 ${colorClass}`} />
-      <h2 className="text-lg font-semibold text-white">{title}</h2>
-    </div>
-    <span className="bg-[var(--bg-panel)] text-[var(--text-secondary)] border border-[var(--border)] px-2.5 py-0.5 rounded-full text-xs font-bold">
-      {count}
-    </span>
-  </div>
-);
-
-  const EmptyState = ({ text }: { text: string }) => (
-    <div className="flex flex-col items-center justify-center p-8 text-center bg-[var(--bg-surface)] border border-dashed border-[var(--border-lg)] rounded-xl">
-      <Ticket className="w-10 h-10 mb-3 text-[var(--text-muted)] opacity-50" />
-      <p className="text-sm font-medium text-[var(--text-secondary)]">{text}</p>
-    </div>
-  );
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -94,15 +127,23 @@ const ColumnHeader = ({ title, count, colorClass, icon: Icon }: ColumnHeaderProp
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button variant="secondary" onClick={() => fetchTickets()} isLoading={isLoading}>
-            <RefreshCw className="w-4 h-4" />
-            <span className="hidden sm:inline">Actualiser</span>
-          </Button>
-          <Button variant="primary" onClick={() => setShowAddModal(true)}>
-            <Plus className="w-4 h-4" />
-            Nouveau Client
-          </Button>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          {!isStationOpen && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-warning-500/10 border border-warning-500/20 text-warning-400 text-sm font-medium">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Hors heures de travail</span>
+            </div>
+          )}
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={() => fetchTickets()} isLoading={isLoading}>
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Actualiser</span>
+            </Button>
+            <Button variant="primary" onClick={() => setShowAddModal(true)} disabled={!isStationOpen}>
+              <Plus className="w-4 h-4" />
+              Nouveau Client
+            </Button>
+          </div>
         </div>
       </div>
 

@@ -11,7 +11,7 @@ import { ProductsPanel } from './ProductsPanel';
 import { CartPanel } from './CartPanel';
 import { CustomerSelect } from './CustomerSelect';
 import { PaymentModal } from './PaymentModal';
-import { ShoppingCart, Wrench, Package, ArrowLeft, Clock, Car, UserPlus } from 'lucide-react';
+import { ShoppingCart, Wrench, Package, ArrowLeft, Clock, Car } from 'lucide-react';
 import type { QueueTicket } from '../types';
 import { GuestConversionModal } from '../components/GuestConversionModal';
 
@@ -158,9 +158,9 @@ export function POS() {
 
         {/* 1. Left Panel: Queue Active Tickets (col-span-3) */}
         <div className="hidden lg:flex flex-col gap-4 col-span-3 h-full">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Clock className="w-5 h-5 text-primary-500" />
-            Véhicules en station
+          <h2 className="text-sm font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+            <Clock className="w-4 h-4 text-primary-500" />
+            En Station
           </h2>
           <Card className="flex-1 overflow-y-auto p-3 bg-[var(--bg-surface)] border-[var(--border)] scrollbar-thin scrollbar-thumb-gray" noPadding>
             {activeTickets.length === 0 ? (
@@ -176,39 +176,28 @@ export function POS() {
                     <div
                       key={ticket.id}
                       onClick={() => handleTicketSelect(ticket)}
-                      className={`p-3 rounded-xl border cursor-pointer transition-all duration-200 ${selectedTicketId === ticket.id
-                        ? 'bg-primary-500/10 border-primary-500 shadow-[var(--shadow-glow-orange)]'
+                      className={`p-3 rounded-xl border cursor-pointer transition-all duration-200 shadow-sm ${selectedTicketId === ticket.id
+                        ? 'bg-primary-500/10 border-primary-500 shadow-[var(--shadow-glow-orange)] ring-1 ring-primary-500'
                         : 'bg-[var(--bg-panel)] border-[var(--border-lg)] hover:border-primary-400/50 hover:bg-[var(--bg-hover)]'
                         }`}
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-white text-sm">#{ticket.ticket_number}</span>
+                          <span className="font-bold text-white text-xs">#{ticket.ticket_number}</span>
                           {isGuest && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-0.5">
-                              <UserPlus className="w-2.5 h-2.5" /> Visiteur
-                            </span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">GUEST</span>
                           )}
                         </div>
                         <div className="flex items-center gap-1">
-                          {ticket.requested_service === 'lavage' && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">Lavage</span>
-                          )}
-                          {ticket.requested_service === 'vidange' && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30">Vidange</span>
-                          )}
-                          {ticket.requested_service === 'pneumatique' && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">Pneumatique</span>
-                          )}
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-primary-500/20 text-primary-400">
-                            En Cours
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase bg-primary-500/20 text-primary-400 border border-primary-500/30">
+                            LIVE
                           </span>
                         </div>
                       </div>
-                      <p className="text-xs text-[var(--text-secondary)] font-medium mb-1 truncate">
+                      <p className="text-xs text-[var(--text-secondary)] font-bold mb-1.5 truncate">
                         {ticket.customer?.full_name || ticket.guest_name || 'Visiteur'}
                       </p>
-                      <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] bg-[var(--bg-base)] p-1.5 rounded border border-[var(--border)]">
+                      <div className="flex items-center gap-1.5 text-xs font-mono text-[var(--text-muted)] bg-[var(--bg-base)] p-1.5 rounded-lg border border-[var(--border)]">
                         <Car className="w-3.5 h-3.5" />
                         <span className="truncate">{ticket.vehicle?.plate_number || '—'}</span>
                       </div>
@@ -220,13 +209,13 @@ export function POS() {
           </Card>
         </div>
 
-        {/* 2. Middle Panel: Services & Products (col-span-12 lg:col-span-5) */}
+        {/* 2. Middle Panel: Services & Products (col-span-5) */}
         <div className="col-span-12 lg:col-span-5 flex flex-col gap-4 h-[500px] lg:h-full lg:min-h-0">
           {/* Tabs */}
-          <div className="flex gap-2 p-1 bg-[var(--bg-panel)] rounded-xl border border-[var(--border-lg)] overflow-hidden shrink-0">
+          <div className="flex gap-2 p-1.5 bg-[var(--bg-panel)] rounded-xl border border-[var(--border-lg)] overflow-hidden shrink-0">
             <button
               onClick={() => setActiveTab('services')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'services'
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-all ${activeTab === 'services'
                 ? 'bg-primary-500 text-white shadow-md'
                 : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-hover)]'
                 }`}
@@ -236,7 +225,7 @@ export function POS() {
             </button>
             <button
               onClick={() => setActiveTab('products')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'products'
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-all ${activeTab === 'products'
                 ? 'bg-primary-500 text-white shadow-md'
                 : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-hover)]'
                 }`}
@@ -255,13 +244,14 @@ export function POS() {
           </Card>
         </div>
 
-        {/* 3. Right Panel: Current Cart & Customer (col-span-12 lg:col-span-4) */}
-        <div className="col-span-12 lg:col-span-4 flex flex-col gap-4 h-[600px] lg:h-full lg:min-h-0">
-          <Card className="p-4 bg-[var(--bg-surface)] border-[var(--border)] shrink-0">
+        {/* 3. Right Panel: Current Cart & Customer (col-span-4) */}
+        <div className="col-span-12 lg:col-span-4 flex flex-col gap-4 h-[700px] lg:h-full lg:min-h-0">
+          {/* We must use overflow-visible so the SearchableSelect dropdown can break out of the Card */}
+          <Card className="p-4 bg-[var(--bg-surface)] border-[var(--border)] shrink-0 shadow-sm overflow-visible z-50">
             <CustomerSelect />
           </Card>
 
-          <Card className="flex-1 overflow-hidden p-0 flex flex-col bg-[var(--bg-surface)] border-[var(--border)]">
+          <Card className="flex-1 overflow-hidden p-0 flex flex-col bg-[var(--bg-surface)] border-[var(--border)] shadow-sm z-40">
             <CartPanel />
           </Card>
         </div>

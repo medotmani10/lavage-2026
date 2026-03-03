@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSupabaseData } from '../hooks/useSupabaseData';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import {
@@ -9,7 +11,8 @@ import {
   DollarSign,
   Users,
   Package,
-  Download
+  Download,
+  X
 } from 'lucide-react';
 
 
@@ -22,7 +25,9 @@ interface DailyRevenue {
 
 export function Finance() {
   const { t } = useTranslation();
+  const { settings } = useSettingsStore();
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('week');
+  const [activeModal, setActiveModal] = useState<'dailyRevenue' | 'dailyProfit' | 'pendingDebts' | 'supplierDebts' | null>(null);
 
   // Fetch all necessary data
   const { data: ticketsData, isLoading: isTicketsLoading } = useSupabaseData<any>('queue_tickets');
@@ -34,8 +39,9 @@ export function Finance() {
   const { data: debtsData, isLoading: isDebtsLoading } = useSupabaseData<any>('debts');
   const { data: suppliersData, isLoading: isSuppliersLoading } = useSupabaseData<any>('suppliers');
   const { data: employeesData, isLoading: isEmployeesLoading } = useSupabaseData<any>('employees');
+  const { data: transactionsData, isLoading: isTransactionsLoading } = useSupabaseData<any>('financial_transactions');
 
-  const isLoading = isTicketsLoading || isDebtsLoading || isSuppliersLoading || isEmployeesLoading;
+  const isLoading = isTicketsLoading || isDebtsLoading || isSuppliersLoading || isEmployeesLoading || isTransactionsLoading;
 
   // Helper: compute COST of a set of ticket IDs
   const computeCosts = (ticketIds: string[]) => {
@@ -65,26 +71,59 @@ export function Finance() {
   const stats = (() => {
     if (isLoading) return undefined;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const now = new Date();
+    const todayStart = new Date();
+    if (settings?.opening_time) {
+      const [hours, minutes] = settings.opening_time.split(':').map(Number);
+      todayStart.setHours(hours, minutes, 0, 0);
+      if (now < todayStart) {
+        todayStart.setDate(todayStart.getDate() - 1);
+      }
+    } else {
+      todayStart.setHours(0, 0, 0, 0);
+    }
+
+    const firstDayOfMonth = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
 
     const tickets = ticketsData || [];
     const completedTickets = tickets.filter((t: any) => t.status === 'completed');
 
     const getTicketDate = (t: any) => new Date(t.completed_at || t.updated_at || t.created_at).getTime();
 
-    const ticketsToday = completedTickets.filter((t: any) => getTicketDate(t) >= today.getTime());
+    const ticketsToday = completedTickets.filter((t: any) => getTicketDate(t) >= todayStart.getTime());
     const ticketsMonth = completedTickets.filter((t: any) => getTicketDate(t) >= firstDayOfMonth.getTime());
 
-    // Revenue = paid_amount
-    const daily_revenue = ticketsToday.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
-    const monthly_revenue = ticketsMonth.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
+    // Costs = product costs + service costs + commissions
+    const ticket_daily_costs = computeCosts(ticketsToday.map((t: any) => t.id));
+    const ticket_monthly_costs = computeCosts(ticketsMonth.map((t: any) => t.id));
+
+    // Financial Transactions (Debt Collections, Supplier Payments, etc.)
+    const transactions = transactionsData || [];
+
+    const daily_fin_revenue = transactions
+      .filter((tx: any) => tx.type === 'revenue' && tx.created_at && new Date(tx.created_at).getTime() >= todayStart.getTime())
+      .reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0);
+
+    const monthly_fin_revenue = transactions
+      .filter((tx: any) => tx.type === 'revenue' && tx.created_at && new Date(tx.created_at).getTime() >= firstDayOfMonth.getTime())
+      .reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0);
+
+    const daily_fin_expenses = transactions
+      .filter((tx: any) => tx.type === 'expense' && tx.created_at && new Date(tx.created_at).getTime() >= todayStart.getTime())
+      .reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0);
+
+    const monthly_fin_expenses = transactions
+      .filter((tx: any) => tx.type === 'expense' && tx.created_at && new Date(tx.created_at).getTime() >= firstDayOfMonth.getTime())
+      .reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0);
+
+    const ticket_daily_revenue = ticketsToday.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
+    const ticket_monthly_revenue = ticketsMonth.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
     const total_revenue = completedTickets.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
 
-    // Costs = product costs + service costs + commissions
-    const daily_costs = computeCosts(ticketsToday.map((t: any) => t.id));
-    const monthly_costs = computeCosts(ticketsMonth.map((t: any) => t.id));
+    const daily_revenue = ticket_daily_revenue + daily_fin_revenue;
+    const monthly_revenue = ticket_monthly_revenue + monthly_fin_revenue;
+    const daily_costs = ticket_daily_costs + daily_fin_expenses;
+    const monthly_costs = ticket_monthly_costs + monthly_fin_expenses;
 
     const debts = debtsData || [];
     const pending_debts = debts
@@ -102,7 +141,7 @@ export function Finance() {
     return {
       daily_revenue,
       monthly_revenue,
-      total_revenue,
+      total_revenue: total_revenue + transactions.filter((tx: any) => tx.type === 'revenue').reduce((s: number, tx: any) => s + (tx.amount || 0), 0),
       daily_profit: daily_revenue - daily_costs,
       monthly_profit: monthly_revenue - monthly_costs,
       daily_costs,
@@ -121,13 +160,22 @@ export function Finance() {
     const days = selectedPeriod === 'week' ? 7 : 30;
     const result: DailyRevenue[] = [];
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const baseTodayStart = new Date();
+    if (settings?.opening_time) {
+      const [hours, minutes] = settings.opening_time.split(':').map(Number);
+      baseTodayStart.setHours(hours, minutes, 0, 0);
+      if (now < baseTodayStart) {
+        baseTodayStart.setDate(baseTodayStart.getDate() - 1);
+      }
+    } else {
+      baseTodayStart.setHours(0, 0, 0, 0);
+    }
 
     const tickets = ticketsData || [];
 
     for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(today);
+      const d = new Date(baseTodayStart);
       d.setDate(d.getDate() - i);
       const dayStart = d.getTime();
       const dayEnd = dayStart + 86400000;
@@ -198,6 +246,7 @@ export function Finance() {
           suffix="DA"
           icon={TrendingUp}
           color="success"
+          onClick={() => setActiveModal('dailyRevenue')}
         />
 
         <StatCard
@@ -206,6 +255,7 @@ export function Finance() {
           suffix="DA"
           icon={TrendingUp}
           color={stats && stats.daily_profit >= 0 ? 'success' : 'danger'}
+          onClick={() => setActiveModal('dailyProfit')}
         />
 
         <StatCard
@@ -215,6 +265,7 @@ export function Finance() {
           icon={Users}
           color="warning"
           trendDown
+          onClick={() => setActiveModal('pendingDebts')}
         />
 
         <StatCard
@@ -223,6 +274,7 @@ export function Finance() {
           suffix="DA"
           icon={Package}
           color="danger"
+          onClick={() => setActiveModal('supplierDebts')}
         />
       </div>
 
@@ -373,6 +425,142 @@ export function Finance() {
           </Card>
         </div>
       </div>
+
+      {/* Modals */}
+      {activeModal === 'dailyRevenue' && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-[var(--border)] flex items-center justify-between sticky top-0 bg-[var(--bg-surface)] z-10 rounded-t-xl">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-success-500/10 flex items-center justify-center">
+                  <TrendingUp className="w-4 h-4 text-success-500" />
+                </div>
+                <h2 className="text-lg font-bold text-white">Revenu du jour détaillé</h2>
+              </div>
+              <button onClick={() => setActiveModal(null)} className="p-2 hover:bg-[var(--bg-panel)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <table className="w-full text-left">
+                <thead className="bg-[var(--bg-panel)] sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Ticket</th>
+                    <th className="px-4 py-3 text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Montant</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {(() => {
+                    const now = new Date();
+                    const modalTodayStart = new Date();
+                    if (settings?.opening_time) {
+                      const [hours, minutes] = settings.opening_time.split(':').map(Number);
+                      modalTodayStart.setHours(hours, minutes, 0, 0);
+                      if (now < modalTodayStart) {
+                        modalTodayStart.setDate(modalTodayStart.getDate() - 1);
+                      }
+                    } else {
+                      modalTodayStart.setHours(0, 0, 0, 0);
+                    }
+                    const todayTickets = (ticketsData || []).filter((t: any) => t.status === 'completed' && new Date(t.completed_at || t.created_at) >= modalTodayStart);
+                    if (todayTickets.length === 0) return <tr><td colSpan={2} className="p-4 text-center text-sm text-[var(--text-muted)]">Aucun revenu aujourd'hui</td></tr>;
+                    return todayTickets.map((t: any) => (
+                      <tr key={t.id} className="hover:bg-[var(--bg-hover)]">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-white">Ticket {t.ticket_number ? `#${t.ticket_number}` : `#${t.id.split('-')[0]}`}</p>
+                          <p className="text-xs text-[var(--text-muted)]">{new Date(t.completed_at || t.created_at).toLocaleTimeString('fr-DZ', { hour: '2-digit', minute: '2-digit' })}</p>
+                        </td>
+                        <td className="px-4 py-3 text-success-400 font-bold">{t.paid_amount?.toLocaleString()} DA</td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'pendingDebts' && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-[var(--border)] flex items-center justify-between sticky top-0 bg-[var(--bg-surface)] z-10 rounded-t-xl">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-warning-500/10 flex items-center justify-center">
+                  <Users className="w-4 h-4 text-warning-500" />
+                </div>
+                <h2 className="text-lg font-bold text-white">Dettes Clients</h2>
+              </div>
+              <button onClick={() => setActiveModal(null)} className="p-2 hover:bg-[var(--bg-panel)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <table className="w-full text-left">
+                <thead className="bg-[var(--bg-panel)] sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Client</th>
+                    <th className="px-4 py-3 text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Montant restant</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {(() => {
+                    const pendingDebts = (debtsData || []).filter((d: any) => d.status !== 'completed' && d.status !== 'cancelled' && d.remaining_amount > 0);
+                    if (pendingDebts.length === 0) return <tr><td colSpan={2} className="p-4 text-center text-sm text-[var(--text-muted)]">Aucune dette client</td></tr>;
+                    return pendingDebts.map((d: any) => (
+                      <tr key={d.id} className="hover:bg-[var(--bg-hover)]">
+                        <td className="px-4 py-3 font-semibold text-white">Client ou Ticket #{d.ticket_id?.split('-')[0] || 'Inconnu'}</td>
+                        <td className="px-4 py-3 text-warning-400 font-bold">{d.remaining_amount?.toLocaleString()} DA</td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'supplierDebts' && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-[var(--border)] flex items-center justify-between sticky top-0 bg-[var(--bg-surface)] z-10 rounded-t-xl">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-danger-500/10 flex items-center justify-center">
+                  <Package className="w-4 h-4 text-danger-500" />
+                </div>
+                <h2 className="text-lg font-bold text-white">Dettes Fournisseurs</h2>
+              </div>
+              <button onClick={() => setActiveModal(null)} className="p-2 hover:bg-[var(--bg-panel)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <table className="w-full text-left">
+                <thead className="bg-[var(--bg-panel)] sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Fournisseur</th>
+                    <th className="px-4 py-3 text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Montant dû</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {(() => {
+                    const supplierDebts = (suppliersData || []).filter((s: any) => s.balance_owed > 0);
+                    if (supplierDebts.length === 0) return <tr><td colSpan={2} className="p-4 text-center text-sm text-[var(--text-muted)]">Aucune dette fournisseur</td></tr>;
+                    return supplierDebts.map((s: any) => (
+                      <tr key={s.id} className="hover:bg-[var(--bg-hover)]">
+                        <td className="px-4 py-3 font-semibold text-white">{s.company_name || s.name || 'Fournisseur Inconnu'}</td>
+                        <td className="px-4 py-3 text-danger-400 font-bold">{s.balance_owed?.toLocaleString()} DA</td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div >
   );
 }
@@ -385,9 +573,10 @@ interface StatCardProps {
   color: 'primary' | 'success' | 'warning' | 'danger';
   trend?: string;
   trendDown?: boolean;
+  onClick?: () => void;
 }
 
-function StatCard({ title, value, suffix, icon: Icon, color, trend, trendDown }: StatCardProps) {
+function StatCard({ title, value, suffix, icon: Icon, color, trend, trendDown, onClick }: StatCardProps) {
   const colorClasses = {
     primary: 'bg-primary-500/10 text-primary-400 border-primary-500/20 shadow-[var(--shadow-glow-orange)]',
     success: 'bg-success-500/10 text-success-400 border-success-500/20 shadow-[var(--shadow-glow-green)]',
@@ -403,7 +592,10 @@ function StatCard({ title, value, suffix, icon: Icon, color, trend, trendDown }:
   }
 
   return (
-    <Card className={`p-5 bg-[var(--bg-panel)] border ${colorClasses[color]} bg-gradient-to-br from-transparent to-[var(--bg-base)] group hover:scale-[1.02] transition-transform duration-300`}>
+    <Card
+      className={`p-5 bg-[var(--bg-panel)] border ${colorClasses[color]} bg-gradient-to-br from-transparent to-[var(--bg-base)] group hover:scale-[1.02] transition-transform duration-300 ${onClick ? 'cursor-pointer hover:shadow-lg' : ''}`}
+      onClick={onClick}
+    >
       <div className="flex flex-col gap-4">
         <div className="flex items-start justify-between">
           <div className="flex-1">
