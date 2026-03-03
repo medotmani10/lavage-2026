@@ -68,7 +68,7 @@ export function CustomerVehiclesPanel({ customer, isOpen, onClose }: CustomerVeh
 
     const handleDelete = async (vehicle: Vehicle) => {
         if (!(await showConfirm('Voulez-vous vraiment supprimer ce véhicule?'))) return;
-        await queueOperation('vehicles', 'DELETE', vehicle);
+        await queueOperation('vehicles', 'DELETE', vehicle as any);
     };
 
     return (

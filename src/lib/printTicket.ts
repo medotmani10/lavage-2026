@@ -2,7 +2,7 @@ import { showAlert } from '../stores/useDialogStore';
 
 interface PrintTicketObj {
   ticket_number?: string;
-  requested_service?: string;
+  requested_service?: string | null;
 }
 interface PrintCustomerObj {
   full_name?: string;
@@ -13,7 +13,7 @@ interface PrintVehicleObj {
   model?: string;
 }
 
-export const printTicket = (ticket: PrintTicketObj, customer: PrintCustomerObj, vehicle: PrintVehicleObj, carsAhead: number = 0) => {
+export const printTicket = (ticket: PrintTicketObj, customer?: PrintCustomerObj, vehicle?: PrintVehicleObj, carsAhead: number = 0) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
     showAlert('Veuillez autoriser les fenêtres contextuelles (pop-ups) pour imprimer le ticket.', 'warning');
