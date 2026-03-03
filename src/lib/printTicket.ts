@@ -12,8 +12,13 @@ interface PrintVehicleObj {
   brand?: string;
   model?: string;
 }
+interface PrintSettingsObj {
+  station_name?: string;
+  logo_url?: string;
+  phone?: string;
+}
 
-export const printTicket = (ticket: PrintTicketObj, customer?: PrintCustomerObj, vehicle?: PrintVehicleObj, carsAhead: number = 0) => {
+export const printTicket = (ticket: PrintTicketObj, customer?: PrintCustomerObj, vehicle?: PrintVehicleObj, carsAhead: number = 0, settings?: PrintSettingsObj) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
     showAlert('Veuillez autoriser les fenêtres contextuelles (pop-ups) pour imprimer le ticket.', 'warning');
@@ -88,8 +93,10 @@ export const printTicket = (ticket: PrintTicketObj, customer?: PrintCustomerObj,
     </head>
     <body onload="window.print(); window.close();">
       <div class="header">
-        <h1>Lavage & Vidange VIDA</h1>
+        ${settings?.logo_url ? `<img src="${settings.logo_url}" alt="Logo" style="max-height: 60px; margin-bottom: 5px; object-fit: contain;" /><br />` : ''}
+        <h1>${settings?.station_name || 'Lavage & Vidange VIDA'}</h1>
         <p>Le Lavage Automobile par Excellence</p>
+        ${settings?.phone ? `<p>Tel: ${settings.phone}</p>` : ''}
         <p>Date: ${currentDate}</p>
       </div>
       

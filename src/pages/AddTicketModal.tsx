@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueueStore } from '../stores/useQueueStore';
 import { showAlert } from '../stores/useDialogStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { Button } from '../components/Button';
 import { Select } from '../components/Select';
 import { Input } from '../components/Input';
@@ -19,6 +20,7 @@ interface AddTicketModalProps {
 export function AddTicketModal({ onClose }: AddTicketModalProps) {
   const { t } = useTranslation();
   const { createTicket, isLoading } = useQueueStore();
+  const { settings } = useSettingsStore();
 
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
@@ -177,7 +179,7 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
 
         // Use a slight delay to ensure the modal closes smoothly before print blocks the thread
         setTimeout(() => {
-          printTicket(ticket, customer, vehicle, carsAhead);
+          printTicket(ticket, customer, vehicle, carsAhead, settings || undefined);
         }, 300);
       }
       onClose();
