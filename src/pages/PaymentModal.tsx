@@ -196,7 +196,7 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
             type: 'revenue',
             amount: actualPaid,
             description_fr: `Paiement Ticket #${ticketId.slice(0, 8)}${remainingDebt > 0 ? ` (Acompte)` : ''}`,
-            description_ar: `دفع التذكرة #${ticketId.slice(0, 8)}${remainingDebt > 0 ? ` (تسبيق)` : ''}`,
+
             reference_type: 'ticket',
             reference_id: ticketId,
             created_by: employeeId || null,

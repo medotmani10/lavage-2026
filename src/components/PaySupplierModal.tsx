@@ -65,7 +65,7 @@ export function PaySupplierModal({ supplierId, onClose }: PaySupplierModalProps)
                 type: 'expense',
                 amount: paidAmount,
                 description_fr: `Paiement fournisseur : ${selectedSupplier.company_name}`,
-                description_ar: `دفع للمورد : ${selectedSupplier.company_name}`,
+
                 reference_type: 'supplier_payment',
                 reference_id: selectedSupplierId,
                 created_by: user?.id || null,

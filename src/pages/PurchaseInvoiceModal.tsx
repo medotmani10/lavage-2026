@@ -184,7 +184,7 @@ export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoi
                     type: 'expense',
                     amount: effectivePaid,
                     description_fr: `Paiement fournisseur (Achat de stock) - Facture ${invoiceNumber || 'N/A'}`,
-                    description_ar: `دفع للمورد (شراء مخزون) - فاتورة ${invoiceNumber || 'N/A'}`,
+
                     reference_type: 'purchase_invoice',
                     reference_id: invoiceId,
                     created_by: null,

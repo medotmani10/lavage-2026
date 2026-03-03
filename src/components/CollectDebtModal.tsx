@@ -95,7 +95,7 @@ export function CollectDebtModal({ customerId, onClose }: CollectDebtModalProps)
                 type: 'revenue',
                 amount: paidAmount,
                 description_fr: `Recouvrement créance client : ${selectedCustomer.full_name}`,
-                description_ar: `تحصيل دين العميل : ${selectedCustomer.full_name}`,
+
                 reference_type: 'customer_debt',
                 reference_id: selectedCustomerId,
                 created_by: user?.id || null,
