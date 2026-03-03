@@ -27,6 +27,7 @@ export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
 
                     if (mounted) {
                         setData(supaData as T[]);
+                        console.log(`[useSupabaseData] ${tableName} fetch success. Items:`, supaData?.length);
                         // Silently cache to Dexie
                         if (supaData && (db as any)[tableName]) {
                             (db as any)[tableName].bulkPut(supaData).catch(console.error);

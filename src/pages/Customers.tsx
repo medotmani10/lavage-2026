@@ -20,12 +20,12 @@ export function Customers() {
   const [vehiclesCustomer, setVehiclesCustomer] = useState<Customer | null>(null);
 
   const { data: allCustomers, isLoading } = useSupabaseData<Customer>('customers');
-  const customers = allCustomers.filter(c => (c as any).active !== false).sort((a, b) => a.full_name.localeCompare(b.full_name));
+  const customers = allCustomers.filter(c => (c as any).active !== false).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
 
   const filteredCustomers = customers.filter((customer) => {
     const query = searchQuery.toLowerCase();
     return (
-      customer.full_name.toLowerCase().includes(query) ||
+      (customer.full_name || '').toLowerCase().includes(query) ||
       customer.phone.toLowerCase().includes(query) ||
       customer.email?.toLowerCase().includes(query)
     );
