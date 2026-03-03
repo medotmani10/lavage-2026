@@ -174,6 +174,8 @@ export async function queueOperation(table: string, operation: 'INSERT' | 'UPDAT
         } else if (operation === 'DELETE') {
             await (db as any)[table].delete(payload.id);
         }
+        // Notify React components to re-fetch from Dexie immediately
+        window.dispatchEvent(new CustomEvent('dexie-sync-update'));
     } catch (e) {
         console.error("Local Dexie operation error:", e);
     }

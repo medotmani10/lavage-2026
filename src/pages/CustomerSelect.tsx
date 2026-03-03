@@ -16,6 +16,7 @@ export function CustomerSelect() {
 
   const customers = rawCustomers
     .filter(c => c.active !== false)
+    .map(c => ({ ...c, full_name: c.full_name || 'Inconnu' }))
     .sort((a, b) => a.full_name.localeCompare(b.full_name));
 
   const employees = rawEmployees

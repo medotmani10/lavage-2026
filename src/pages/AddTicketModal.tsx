@@ -13,9 +13,6 @@ import { queueOperation } from '../lib/sync';
 interface AddTicketModalProps {
   onClose: () => void;
 }
-
-
-
 export function AddTicketModal({ onClose }: AddTicketModalProps) {
   const { t } = useTranslation();
   const { createTicket, isLoading } = useQueueStore();
@@ -34,8 +31,8 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
     .filter(c => c.active !== false)
     .map(c => ({
       id: c.id,
-      full_name: c.full_name,
-      phone: c.phone
+      full_name: c.full_name || 'Inconnu',
+      phone: c.phone || ''
     }))
     .sort((a, b) => a.full_name.localeCompare(b.full_name));
 

@@ -58,10 +58,17 @@ export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
 
         fetchData();
 
-        // Listen for realtime updates to trigger a re-fetch
-        const handleSyncUpdate = () => {
-            // For now, re-fetch entirely. (Could be optimized to just update state)
-            fetchData();
+        // Listen for realtime or local updates to trigger a fast re-fetch from local Dexie cache
+        const handleSyncUpdate = async () => {
+            if (!mounted) return;
+            // Since `queueOperation` and Supabase realtime put the fresh data inside Dexie,
+            // we can just read from the local cache to update the UI instantly without a network request.
+            if ((db as any)[tableName]) {
+                const localData = await (db as any)[tableName].toArray();
+                if (mounted) setData(localData);
+            } else {
+                fetchData();
+            }
         };
 
         const handleOffline = () => { if (mounted) setIsOffline(true); };
