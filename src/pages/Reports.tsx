@@ -29,6 +29,8 @@ export function Reports() {
     // Summary states
     const [summary, setSummary] = useState({
         totalRevenue: 0,
+        totalCosts: 0,
+        netProfit: 0,
         totalTickets: 0,
         topService: '-',
         avgTicketValue: 0
@@ -37,6 +39,8 @@ export function Reports() {
     // Use Supabase hooks
     const { data: rawTickets, isLoading: isLoadingTickets } = useSupabaseData<any>('queue_tickets');
     const { data: rawTicketServices, isLoading: isLoadingTicketServices } = useSupabaseData<any>('ticket_services');
+    const { data: rawTicketProducts, isLoading: isLoadingTicketProducts } = useSupabaseData<any>('ticket_products');
+    const { data: rawcommissions, isLoading: isLoadingCommissions } = useSupabaseData<any>('commissions');
     const { data: rawServices, isLoading: isLoadingServices } = useSupabaseData<any>('services');
     const { data: rawEmployees, isLoading: isLoadingEmployees } = useSupabaseData<any>('employees');
     const { data: rawUsers, isLoading: isLoadingUsers } = useSupabaseData<any>('users');
@@ -45,6 +49,8 @@ export function Reports() {
     const isDataLoading =
         isLoadingTickets ||
         isLoadingTicketServices ||
+        isLoadingTicketProducts ||
+        isLoadingCommissions ||
         isLoadingServices ||
         isLoadingEmployees ||
         isLoadingUsers ||
@@ -54,7 +60,7 @@ export function Reports() {
         if (!isDataLoading) {
             fetchReportData();
         }
-    }, [period, reportType, isDataLoading, rawTickets, rawTicketServices, rawServices, rawEmployees, rawUsers, rawProducts]);
+    }, [period, reportType, isDataLoading, rawTickets, rawTicketServices, rawTicketProducts, rawcommissions, rawServices, rawEmployees, rawUsers, rawProducts]);
 
     const fetchReportData = () => {
         setIsLoading(true);
@@ -90,31 +96,96 @@ export function Reports() {
     };
 
     const fetchRevenueData = (startDate: Date, endDate: Date) => {
-        const tickets = rawTickets.filter(t => {
+        const tickets = rawTickets.filter((t: any) => {
             if (t.status !== 'completed') return false;
             const completedDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at);
             return completedDate >= startDate && completedDate <= endDate;
         });
 
-        let totalRev = 0;
-        const groupedByDate: Record<string, number> = {};
+        const ticketIds = tickets.map((t: any) => t.id);
 
-        tickets?.forEach(ticket => {
+        // Revenue: total paid
+        let totalRev = 0;
+        // Cost of products sold (cost_price × qty)
+        let totalProductCosts = 0;
+        // Cost of services (cost × qty)
+        let totalServiceCosts = 0;
+        // Employee commissions
+        let totalCommissions = 0;
+
+        const groupedByDate: Record<string, { revenue: number; costs: number; profit: number }> = {};
+
+        tickets.forEach((ticket: any) => {
             const completedDate = ticket.completed_at ? parseISO(ticket.completed_at) : parseISO(ticket.created_at);
             const dateStr = format(completedDate, period === 'today' ? 'HH:mm' : 'dd MMM', { locale: fr });
-            totalRev += Number(ticket.paid_amount) || 0;
-            groupedByDate[dateStr] = (groupedByDate[dateStr] || 0) + (Number(ticket.paid_amount) || 0);
+            const rev = Number(ticket.paid_amount) || 0;
+            totalRev += rev;
+            if (!groupedByDate[dateStr]) groupedByDate[dateStr] = { revenue: 0, costs: 0, profit: 0 };
+            groupedByDate[dateStr].revenue += rev;
+        });
+
+        // Product costs: ticket_products.quantity × product.cost_price
+        const tps = (rawTicketProducts || []).filter((tp: any) => ticketIds.includes(tp.ticket_id));
+        for (const tp of tps) {
+            const product = (rawProducts || []).find((p: any) => p.id === tp.product_id);
+            const cost = (Number(product?.cost_price) || 0) * (Number(tp.quantity) || 1);
+            totalProductCosts += cost;
+            // Attribute cost to the ticket's date
+            const ticket = tickets.find((t: any) => t.id === tp.ticket_id);
+            if (ticket) {
+                const d = ticket.completed_at ? parseISO(ticket.completed_at) : parseISO(ticket.created_at);
+                const dateStr = format(d, period === 'today' ? 'HH:mm' : 'dd MMM', { locale: fr });
+                if (groupedByDate[dateStr]) groupedByDate[dateStr].costs += cost;
+            }
+        }
+
+        // Service costs: ticket_services.quantity × service.cost
+        const tss = (rawTicketServices || []).filter((ts: any) => ticketIds.includes(ts.ticket_id));
+        for (const ts of tss) {
+            const service = (rawServices || []).find((s: any) => s.id === ts.service_id);
+            const cost = (Number(service?.cost) || 0) * (Number(ts.quantity) || 1);
+            totalServiceCosts += cost;
+            const ticket = tickets.find((t: any) => t.id === ts.ticket_id);
+            if (ticket) {
+                const d = ticket.completed_at ? parseISO(ticket.completed_at) : parseISO(ticket.created_at);
+                const dateStr = format(d, period === 'today' ? 'HH:mm' : 'dd MMM', { locale: fr });
+                if (groupedByDate[dateStr]) groupedByDate[dateStr].costs += cost;
+            }
+        }
+
+        // Commissions: sum all commissions for these tickets
+        const comms = (rawcommissions || []).filter((c: any) => ticketIds.includes(c.ticket_id));
+        for (const c of comms) {
+            totalCommissions += Number(c.amount) || 0;
+            const ticket = tickets.find((t: any) => t.id === c.ticket_id);
+            if (ticket) {
+                const d = ticket.completed_at ? parseISO(ticket.completed_at) : parseISO(ticket.created_at);
+                const dateStr = format(d, period === 'today' ? 'HH:mm' : 'dd MMM', { locale: fr });
+                if (groupedByDate[dateStr]) groupedByDate[dateStr].costs += Number(c.amount) || 0;
+            }
+        }
+
+        const totalCosts = totalProductCosts + totalServiceCosts + totalCommissions;
+        const netProfit = totalRev - totalCosts;
+
+        // Compute profit per date
+        Object.keys(groupedByDate).forEach(date => {
+            groupedByDate[date].profit = groupedByDate[date].revenue - groupedByDate[date].costs;
         });
 
         const chartData = Object.keys(groupedByDate).map(date => ({
             name: date,
-            Revenus: groupedByDate[date]
+            Revenus: Math.round(groupedByDate[date].revenue),
+            Coûts: Math.round(groupedByDate[date].costs),
+            Bénéfice: Math.round(groupedByDate[date].profit)
         }));
 
         setRevenueData(chartData);
         setSummary(prev => ({
             ...prev,
             totalRevenue: totalRev,
+            totalCosts,
+            netProfit,
             totalTickets: tickets?.length || 0,
             avgTicketValue: tickets?.length ? totalRev / tickets.length : 0
         }));
@@ -236,9 +307,9 @@ export function Reports() {
             {reportType !== 'inventory' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <StatCard icon={TrendingUp} label="Revenus Total" value={`${summary.totalRevenue.toLocaleString()} DA`} color="text-success-400" />
+                    <StatCard icon={Activity} label="Total des Coûts" value={`${(summary.totalCosts || 0).toLocaleString()} DA`} color="text-danger-400" />
+                    <StatCard icon={TrendingUp} label="Bénéfice Net" value={`${(summary.netProfit || 0).toLocaleString()} DA`} color={summary.netProfit >= 0 ? 'text-success-400' : 'text-danger-400'} />
                     <StatCard icon={FileText} label="Tickets Complétés" value={summary.totalTickets.toString()} color="text-primary-400" />
-                    <StatCard icon={Activity} label="Moyenne / Ticket" value={`${summary.avgTicketValue.toFixed(0)} DA`} color="text-warning-400" />
-                    <StatCard icon={PieChartIcon} label="Service Populaire" value={summary.topService} color="text-info-400" />
                 </div>
             )}
 
@@ -297,10 +368,12 @@ export function Reports() {
                                         <YAxis stroke="#9CA3AF" tick={{ fill: '#9CA3AF' }} />
                                         <Tooltip
                                             contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', color: '#fff' }}
-                                            itemStyle={{ color: '#F59E0B' }}
+                                            formatter={(value: any) => [`${Number(value).toLocaleString()} DA`] as any}
                                         />
                                         <Legend />
                                         <Line type="monotone" dataKey="Revenus" stroke="#F59E0B" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                                        <Line type="monotone" dataKey="Coûts" stroke="#EF4444" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 3 }} />
+                                        <Line type="monotone" dataKey="Bénéfice" stroke="#10B981" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             )}

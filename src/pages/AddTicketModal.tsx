@@ -9,6 +9,8 @@ import { X, Check, Printer } from 'lucide-react';
 import { printTicket } from '../lib/printTicket';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { queueOperation } from '../lib/sync';
+import { supabase } from '../lib/supabase';
+
 
 interface AddTicketModalProps {
   onClose: () => void;
@@ -65,7 +67,6 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
 
     if (newCustomerPhone) {
       const existingCustomer = customers.find(c => c.phone === newCustomerPhone);
-
       if (existingCustomer) {
         showAlert(`Un client avec ce numéro de téléphone existe déjà: ${existingCustomer.full_name}`, 'warning');
         return;
@@ -77,26 +78,34 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
       id: newId,
       full_name: newCustomerName,
       phone: newCustomerPhone || '',
-      active: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
 
     try {
       await queueOperation('customers', 'INSERT', newCustomer as any);
+      // Only select after confirmed save
       setSelectedCustomerId(newId);
       setIsAddingCustomer(false);
       setNewCustomerName('');
       setNewCustomerPhone('');
     } catch (error: any) {
       console.error('Customer insert error:', error);
-      showAlert(`Erreur lors de l'ajout du client: ${error.message}`, 'error');
+      showAlert(`❌ Erreur: ${error.message}`, 'error');
+      // Don't set selectedCustomerId — customer wasn't saved
     }
   };
 
   const handleQuickAddVehicle = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (!newVehiclePlate || !selectedCustomerId) return;
+
+    // Verify customer exists in DB before creating vehicle
+    const { data: custCheck } = await supabase.from('customers').select('id').eq('id', selectedCustomerId).single();
+    if (!custCheck) {
+      showAlert('Le client sélectionné n\'existe pas encore en base. Veuillez d\'abord enregistrer le client.', 'error');
+      return;
+    }
 
     const newId = crypto.randomUUID();
     const newVehicle = {
@@ -112,6 +121,7 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
 
     try {
       await queueOperation('vehicles', 'INSERT', newVehicle as any);
+      // Only select after confirmed save
       setSelectedVehicleId(newId);
       setIsAddingVehicle(false);
       setNewVehiclePlate('');
@@ -120,7 +130,8 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
       setNewVehicleYear(new Date().getFullYear().toString());
     } catch (error: any) {
       console.error('Vehicle insert error:', error);
-      showAlert(`Erreur lors de l'ajout du véhicule: ${error.message}`, 'error');
+      showAlert(`❌ Erreur: ${error.message}`, 'error');
+      // Don't set selectedVehicleId — vehicle wasn't saved
     }
   };
 
@@ -128,6 +139,19 @@ export function AddTicketModal({ onClose }: AddTicketModalProps) {
     e.preventDefault();
 
     if (!selectedCustomerId || !selectedVehicleId) return;
+
+    // Verify customer and vehicle exist in the DB before creating ticket
+    // This prevents FK violation (409 Conflict) when quick-add failed silently
+    const { data: custCheck } = await supabase.from('customers').select('id').eq('id', selectedCustomerId).single();
+    if (!custCheck) {
+      showAlert('❌ Le client sélectionné n\'existe pas en base de données. Veuillez l\'ajouter à nouveau.', 'error');
+      return;
+    }
+    const { data: vehCheck } = await supabase.from('vehicles').select('id').eq('id', selectedVehicleId).single();
+    if (!vehCheck) {
+      showAlert('❌ Le véhicule sélectionné n\'existe pas en base de données. Veuillez l\'ajouter à nouveau.', 'error');
+      return;
+    }
 
     const ticket = await createTicket({
       customer_id: selectedCustomerId,

@@ -23,10 +23,8 @@ import {
     RefreshCw
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { db } from '../lib/db';
 import { showAlert, showConfirm, showPrompt } from '../stores/useDialogStore';
-import type { User } from '../lib/db';
-import type { UserRole } from '../lib/database.types';
+import type { User, UserRole } from '../types';
 import { queueOperation } from '../lib/sync';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 
@@ -370,7 +368,8 @@ export function Settings() {
                                                 className="shrink-0 border-warning-500/30 text-warning-400 hover:bg-warning-500/10"
                                                 onClick={async () => {
                                                     if (!(await showConfirm("Voulez-vous vraiment vider le cache local ? L'application va redémarrer."))) return;
-                                                    await db.delete();
+                                                    localStorage.clear();
+                                                    sessionStorage.clear();
                                                     window.location.reload();
                                                 }}
                                             >
@@ -403,8 +402,7 @@ export function Settings() {
 
                                                     setIsSaving(true);
                                                     try {
-                                                        // Clear local sync queue first to stop background pushes
-                                                        await db.sync_queue.clear();
+
 
                                                         // Order matters due to foreign keys. We drop child relations first.
                                                         const tables = [
@@ -437,7 +435,8 @@ export function Settings() {
                                                         }
 
                                                         // Wipe local storage explicitly
-                                                        await db.delete();
+                                                        localStorage.clear();
+                                                        sessionStorage.clear();
                                                         showAlert("Réinitialisation réussie. L'application va redémarrer.", "success");
                                                         window.location.reload();
                                                     } catch (err: any) {

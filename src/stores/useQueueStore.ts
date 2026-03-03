@@ -74,12 +74,24 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   },
 
   subscribeToTickets: () => {
-    // Basic polling fallback for when we can't use live query directly
-    // Ideally components will use Dexie useLiveQuery.
-    // Listen to custom event dispatched by sync.ts
-    const handleSync = () => get().fetchTickets();
-    window.addEventListener('dexie-sync-update', handleSync);
-    return () => { window.removeEventListener('dexie-sync-update', handleSync); };
+    // Native Supabase Realtime subscription on queue_tickets table
+    const channel = supabase
+      .channel(`realtime:queue_tickets:${Math.random().toString(36).slice(2)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'queue_tickets' },
+        () => { get().fetchTickets(); }
+      )
+      .subscribe();
+
+    // Also listen to manual event (for queueOperation dispatch)
+    const handleManualUpdate = () => get().fetchTickets();
+    window.addEventListener('supabase-data-update', handleManualUpdate);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener('supabase-data-update', handleManualUpdate);
+    };
   },
 
   createTicket: async (ticketData) => {
@@ -88,22 +100,25 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     try {
       const newTicketId = crypto.randomUUID();
 
-      // Generate client-side ticket number for immediate printing
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Generate ticket number — fetch ALL existing ticket numbers with this prefix
+      // and find the MAX client-side (more reliable than ORDER BY on strings)
+      const prefix = ticketData.requested_service === 'lavage' ? 'L'
+        : ticketData.requested_service === 'vidange' ? 'V' : 'P';
 
-      const { data: allToday } = await supabase
+      const { data: allWithPrefix } = await supabase
         .from('queue_tickets')
-        .select('*')
-        .gte('created_at', today.toISOString())
-        .eq('requested_service', ticketData.requested_service);
+        .select('ticket_number')
+        .ilike('ticket_number', `${prefix}%`) as { data: any[] | null };
 
-      const prefix = ticketData.requested_service === 'lavage' ? 'L' : ticketData.requested_service === 'vidange' ? 'V' : 'P';
-      const maxNum = (allToday || []).reduce((max: number, t: any) => {
+      const lastNum = (allWithPrefix || []).reduce((max: number, t: any) => {
         const num = parseInt((t.ticket_number || '').replace(/[^0-9]/g, '') || '0', 10);
         return Math.max(max, num);
       }, 0);
-      const ticketNumber = `${prefix}${(maxNum + 1).toString().padStart(4, '0')}`;
+
+      // Try inserting with incrementing ticket numbers until one succeeds
+      let ticketNumber = `${prefix}${(lastNum + 1).toString().padStart(4, '0')}`;
+      let attempt = 0;
+      const MAX_ATTEMPTS = 5;
 
       const newTicket = {
         id: newTicketId,
@@ -131,7 +146,32 @@ export const useQueueStore = create<QueueState>((set, get) => ({
         requested_service: ticketData.requested_service
       };
 
-      await queueOperation('queue_tickets', 'INSERT', newTicket);
+      while (attempt < MAX_ATTEMPTS) {
+        newTicket.ticket_number = ticketNumber;
+        const { error } = await supabase.from('queue_tickets').insert([newTicket] as any);
+
+        if (!error) {
+          // Success! Notify components
+          window.dispatchEvent(new CustomEvent('supabase-data-update'));
+          break;
+        }
+
+        if (error.code === '23505') {
+          // Duplicate ticket_number — try next number
+          attempt++;
+          const nextNum = lastNum + 1 + attempt;
+          ticketNumber = `${prefix}${nextNum.toString().padStart(4, '0')}`;
+          console.warn(`Ticket number collision, retrying with ${ticketNumber} (attempt ${attempt})`);
+        } else {
+          // Different error — propagate
+          if (error.code === '23503') throw new Error(`Référence introuvable — vérifiez que le client et le véhicule existent: ${error.message}`);
+          throw error;
+        }
+      }
+
+      if (attempt >= MAX_ATTEMPTS) {
+        throw new Error(`Impossible de générer un numéro de ticket unique après ${MAX_ATTEMPTS} tentatives.`);
+      }
 
       // Refresh tickets list
       await get().fetchTickets();
@@ -144,6 +184,7 @@ export const useQueueStore = create<QueueState>((set, get) => ({
       return null;
     }
   },
+
 
   updateTicketStatus: async (ticketId, status) => {
     set({ isLoading: true, error: null });

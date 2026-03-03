@@ -5,30 +5,17 @@ import { Login } from './pages/Login';
 import { Dashboard, Queue, POS, Customers, Inventory, Services, Suppliers, Employees, Finance, Reports, Settings } from './pages';
 import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './hooks/useAuth';
-import { pullChanges, pushChanges, setupRealtimeSync } from './lib/sync';
+import { setupRealtimeSync } from './lib/sync';
 import { useAuthStore } from './stores/useAuthStore';
 import { GlobalDialogs } from './components/GlobalDialogs';
 
 function App() {
   const { isAuthenticated } = useAuthStore();
   useEffect(() => {
-
-    // Background pull for cache, but does not block the UI
-    pullChanges().catch(console.error);
-
-    // Setup Realtime subscriptions
+    // Setup Realtime subscriptions to receive live data updates
     const cleanupRealtime = setupRealtimeSync();
 
-    // Setup listeners for network status
-    const handleOnline = () => {
-      pushChanges();
-      pullChanges();
-    };
-
-    window.addEventListener('online', handleOnline);
-
     return () => {
-      window.removeEventListener('online', handleOnline);
       cleanupRealtime();
     };
   }, [isAuthenticated]);

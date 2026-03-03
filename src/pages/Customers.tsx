@@ -19,14 +19,17 @@ export function Customers() {
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [vehiclesCustomer, setVehiclesCustomer] = useState<Customer | null>(null);
 
-  const { data: allCustomers, isLoading } = useSupabaseData<Customer>('customers');
-  const customers = allCustomers.filter(c => (c as any).active !== false).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+  const { data: allCustomers, isLoading, error } = useSupabaseData<Customer>('customers');
+  // Include customers where active is true OR null/undefined (never been explicitly set to false)
+  const customers = allCustomers
+    .filter(c => (c as any).active !== false)
+    .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
 
   const filteredCustomers = customers.filter((customer) => {
     const query = searchQuery.toLowerCase();
     return (
       (customer.full_name || '').toLowerCase().includes(query) ||
-      customer.phone.toLowerCase().includes(query) ||
+      (customer.phone || '').toLowerCase().includes(query) ||
       customer.email?.toLowerCase().includes(query)
     );
   });
@@ -68,6 +71,16 @@ export function Customers() {
           className="bg-[var(--bg-base)] border-none"
         />
       </Card>
+
+      {/* Error state */}
+      {error && !isLoading && (
+        <Card className="p-6 border border-red-500/30 bg-red-500/5 text-center">
+          <p className="text-red-400 font-medium text-sm">
+            ⚠️ Impossible de charger les clients — vérifiez votre connexion internet.
+          </p>
+          <p className="text-red-400/60 text-xs mt-1">{error.message}</p>
+        </Card>
+      )}
 
       {/* Customers Grid */}
       {isLoading ? (

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { X, Car, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { db } from '../lib/db';
 import { queueOperation } from '../lib/sync';
 import type { QueueTicket } from '../types';
 
@@ -41,8 +40,7 @@ export function GuestConversionModal({ ticket, onConverted, onClose }: GuestConv
                 if (ce) throw ce;
                 if (!newCust?.id) throw new Error('Customer creation failed');
                 customerId = newCust.id as string;
-                // Sync to Dexie
-                await db.customers.put({ id: customerId, full_name, phone, email: null, address: null, credit_limit: 0, current_balance: 0, loyalty_points: 0, notes: 'Client Kiosque', active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+                // Only use Supabase now
             }
 
             // 2. Create vehicle

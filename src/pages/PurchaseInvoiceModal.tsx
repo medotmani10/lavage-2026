@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { db } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import { queueOperation } from '../lib/sync';
 import { showAlert } from '../stores/useDialogStore';
 import { useSupabaseData } from '../hooks/useSupabaseData';
@@ -112,7 +112,7 @@ export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoi
         try {
             const invoiceId = crypto.randomUUID();
             const now = new Date().toISOString();
-            const supplier = await db.suppliers.get(supplierId);
+            const { data: supplier } = await supabase.from('suppliers').select('*').eq('id', supplierId).single() as { data: any, error: any };
 
             // 1. Save Invoice
             await queueOperation('purchase_invoices', 'INSERT', {
@@ -140,7 +140,7 @@ export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoi
 
             // 2. Update Products & Record Movements
             for (const line of lines) {
-                const product = await db.products.get(line.product_id);
+                const { data: product } = await supabase.from('products').select('*').eq('id', line.product_id).single() as { data: any, error: any };
                 if (product) {
                     // Update product stock and prices
                     await queueOperation('products', 'UPDATE', {
@@ -155,7 +155,7 @@ export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoi
                     await queueOperation('stock_movements', 'INSERT', {
                         id: crypto.randomUUID(),
                         product_id: product.id,
-                        movement_type: 'purchase',
+                        movement_type: 'in',
                         quantity: line.quantity,
                         unit_cost: line.unit_cost,
                         reference_type: 'purchase_invoice',
@@ -184,7 +184,7 @@ export function PurchaseInvoiceModal({ onClose, onAddNewProduct }: PurchaseInvoi
                     description: `Paiement fournisseur (Achat de stock) - Facture ${invoiceNumber || 'N/A'}`,
                     reference_type: 'purchase_invoice',
                     reference_id: invoiceId,
-                    created_by: 'system',
+                    created_by: null,
                     created_at: now
                 });
             }

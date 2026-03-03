@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
 export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
@@ -6,6 +6,7 @@ export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
     const [isOffline, setIsOffline] = useState(!navigator.onLine);
+    const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
     useEffect(() => {
         let mounted = true;
@@ -16,40 +17,54 @@ export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
             setError(null);
 
             try {
-                if (navigator.onLine) {
-                    setIsOffline(false);
-                    const { data: supaData, error: supaError } = await supabase.from(tableName).select('*');
-
-                    if (supaError) {
-                        throw supaError;
-                    }
-
-                    if (mounted && supaData) {
-                        setData(supaData as T[]);
-                    }
-                } else {
+                if (!navigator.onLine) {
                     setIsOffline(true);
-                    throw new Error("Offline, unable to fetch from Supabase");
+                    throw new Error("Hors ligne — impossible de charger les données.");
                 }
+
+                setIsOffline(false);
+                const { data: supaData, error: supaError } = await supabase
+                    .from(tableName as any)
+                    .select('*');
+
+                if (supaError) throw supaError;
+                if (mounted && supaData) setData(supaData as T[]);
             } catch (err: any) {
-                console.error(`Error fetching data for ${tableName}:`, err);
                 if (mounted) {
                     setError(err);
-                    setIsOffline(true);
+                    if (!navigator.onLine) setIsOffline(true);
                 }
             } finally {
                 if (mounted) setIsLoading(false);
             }
         };
 
+        // Initial fetch
         fetchData();
 
-        // Listen for realtime updates from Supabase realtime, ignore local Dexie syncs
-        const handleSyncUpdate = async () => {
-            if (!mounted) return;
-            fetchData();
-        };
+        // ─── Supabase Realtime subscription (per-table) ─────────────────────
+        // Each hook instance subscribes to changes on its specific table only.
+        // When any row in this table changes (INSERT / UPDATE / DELETE),
+        // we re-fetch fresh data immediately.
+        const channelName = `realtime:${tableName}:${Math.random().toString(36).slice(2)}`;
+        const channel = supabase
+            .channel(channelName)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: tableName },
+                () => {
+                    if (mounted) fetchData();
+                }
+            )
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log(`✅ Realtime subscribed: ${tableName}`);
+                }
+            });
 
+        channelRef.current = channel;
+
+        // ─── Network event listeners ─────────────────────────────────────────
         const handleOffline = () => { if (mounted) setIsOffline(true); };
         const handleOnline = () => {
             if (mounted) {
@@ -58,15 +73,22 @@ export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
             }
         };
 
-        window.addEventListener('dexie-sync-update', handleSyncUpdate);
+        // ─── Manual refresh event (for components that still use queueOperation) ─
+        const handleManualUpdate = () => { if (mounted) fetchData(); };
+
         window.addEventListener('offline', handleOffline);
         window.addEventListener('online', handleOnline);
+        window.addEventListener('supabase-data-update', handleManualUpdate);
 
         return () => {
             mounted = false;
-            window.removeEventListener('dexie-sync-update', handleSyncUpdate);
             window.removeEventListener('offline', handleOffline);
             window.removeEventListener('online', handleOnline);
+            window.removeEventListener('supabase-data-update', handleManualUpdate);
+            if (channelRef.current) {
+                supabase.removeChannel(channelRef.current);
+                channelRef.current = null;
+            }
         };
     }, [tableName]);
 

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { usePOSStore } from '../stores/usePOSStore';
 import { showAlert } from '../stores/useDialogStore';
 import { useQueueStore } from '../stores/useQueueStore';
-import { db } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import { queueOperation } from '../lib/sync';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -46,8 +46,8 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
       setShowVidangeCard(true);
       return;
     }
-    db.queue_tickets.get(ticketId).then(t => {
-      if (t?.requested_service === 'vidange') {
+    supabase.from('queue_tickets').select('*').eq('id', ticketId).single().then(({ data: t }) => {
+      if ((t as any)?.requested_service === 'vidange') {
         setVidangeTicket(t);
         setShowVidangeCard(true);
       } else {
@@ -79,7 +79,7 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
 
     // Bug #3 fix: Enforce credit limit BEFORE accepting credit payment
     if (paymentMethod === 'credit') {
-      const custCheck = await db.customers.get(customerId);
+      const { data: custCheck } = await supabase.from('customers').select('*').eq('id', customerId).single() as { data: any, error: any };
       if (custCheck) {
         const newBalance = (custCheck.current_balance || 0) + total;
         if (custCheck.credit_limit && newBalance > custCheck.credit_limit) {
@@ -96,7 +96,7 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
 
     try {
       // 1. Update queue_tickets with cart totals and status
-      const currentTicket = await db.queue_tickets.get(ticketId);
+      const { data: currentTicket } = await supabase.from('queue_tickets').select('*').eq('id', ticketId).single() as { data: any, error: any };
       if (currentTicket) {
         // Bug #7: paid_amount = what was actually paid (may be partial)
         const paidAmount = paymentMethod === 'credit' ? 0 : effectivePaid;
@@ -117,7 +117,7 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
       }
 
       // 2. Fetch current customer
-      const currentCust = await db.customers.get(customerId);
+      const { data: currentCust } = await supabase.from('customers').select('*').eq('id', customerId).single() as { data: any, error: any };
       const currentBalance = currentCust?.current_balance || 0;
 
       // 3. Handle Payment or Debt logic
@@ -196,7 +196,7 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
             description: `Paiement Ticket #${ticketId.slice(0, 8)}${remainingDebt > 0 ? ` (Acompte)` : ''}`,
             reference_type: 'ticket',
             reference_id: ticketId,
-            created_by: currentTicket?.customer_id || employeeId || 'system',
+            created_by: employeeId || null,
             created_at: new Date().toISOString(),
           });
         }
@@ -207,7 +207,7 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
       const products = items.filter(i => i.type === 'product');
       let totalCommissionsForTicket = 0;
 
-      const employee = employeeId ? await db.employees.get(employeeId) : null;
+      const { data: employee } = employeeId ? await supabase.from('employees').select('*').eq('id', employeeId).single() as { data: any, error: any } : { data: null };
 
       if (services.length > 0) {
         for (const s of services) {
@@ -224,7 +224,7 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
 
           // Calculate commission if an employee is assigned
           if (employee) {
-            const serviceData = await db.services.get(s.id);
+            const { data: serviceData } = await supabase.from('services').select('*').eq('id', s.id).single() as { data: any, error: any };
             let commissionAmount = 0;
             let rateApplied = 0;
             let method = 'percentage';
@@ -288,7 +288,7 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
           });
 
           // Deduct from inventory
-          const currentProduct = await db.products.get(p.id);
+          const { data: currentProduct } = await supabase.from('products').select('*').eq('id', p.id).single() as { data: any, error: any };
           if (currentProduct) {
             await queueOperation('products', 'UPDATE', {
               ...currentProduct,
@@ -300,8 +300,8 @@ export function PaymentModal({ ticketId, onClose }: PaymentModalProps) {
             await queueOperation('stock_movements', 'INSERT', {
               id: crypto.randomUUID(),
               product_id: p.id,
-              movement_type: 'sale',
-              quantity: -p.quantity,
+              movement_type: 'out',
+              quantity: p.quantity,
               unit_cost: p.price,
               reference_type: 'ticket',
               reference_id: ticketId,

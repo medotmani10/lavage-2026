@@ -31,7 +31,7 @@ export function CustomerVehiclesPanel({ customer, isOpen, onClose }: CustomerVeh
     const { data: rawVehicles } = useSupabaseData<any>('vehicles');
     const { data: rawTickets } = useSupabaseData<any>('queue_tickets');
 
-    const vehicles = rawVehicles.filter(v => v.customer_id === customer?.id && (v as any).active !== false);
+    const vehicles = rawVehicles.filter(v => v.customer_id === customer?.id);
 
     const fiches = (!selectedVehicleForFiche?.id || !customer?.id)
         ? []
@@ -55,7 +55,7 @@ export function CustomerVehiclesPanel({ customer, isOpen, onClose }: CustomerVeh
                 customer_id: customer.id,
                 ...formData,
                 year: parseInt(formData.year),
-                active: true,
+                odometer: 0,
                 created_at: new Date().toISOString()
             });
         }
@@ -67,7 +67,7 @@ export function CustomerVehiclesPanel({ customer, isOpen, onClose }: CustomerVeh
 
     const handleDelete = async (vehicle: Vehicle) => {
         if (!(await showConfirm('Voulez-vous vraiment supprimer ce véhicule?'))) return;
-        await queueOperation('vehicles', 'UPDATE', { ...vehicle, active: false });
+        await queueOperation('vehicles', 'DELETE', vehicle);
     };
 
     return (

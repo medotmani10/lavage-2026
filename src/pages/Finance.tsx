@@ -9,7 +9,6 @@ import {
   DollarSign,
   Users,
   Package,
-  Calendar,
   Download
 } from 'lucide-react';
 
@@ -27,11 +26,41 @@ export function Finance() {
 
   // Fetch all necessary data
   const { data: ticketsData, isLoading: isTicketsLoading } = useSupabaseData<any>('queue_tickets');
+  const { data: ticketProductsData } = useSupabaseData<any>('ticket_products');
+  const { data: ticketServicesData } = useSupabaseData<any>('ticket_services');
+  const { data: productsData } = useSupabaseData<any>('products');
+  const { data: servicesData } = useSupabaseData<any>('services');
+  const { data: commissionsData } = useSupabaseData<any>('commissions');
   const { data: debtsData, isLoading: isDebtsLoading } = useSupabaseData<any>('debts');
   const { data: suppliersData, isLoading: isSuppliersLoading } = useSupabaseData<any>('suppliers');
   const { data: employeesData, isLoading: isEmployeesLoading } = useSupabaseData<any>('employees');
 
   const isLoading = isTicketsLoading || isDebtsLoading || isSuppliersLoading || isEmployeesLoading;
+
+  // Helper: compute COST of a set of ticket IDs
+  const computeCosts = (ticketIds: string[]) => {
+    // Product costs: cost_price × quantity
+    const productCost = (ticketProductsData || []).reduce((sum: number, tp: any) => {
+      if (!ticketIds.includes(tp.ticket_id)) return sum;
+      const product = (productsData || []).find((p: any) => p.id === tp.product_id);
+      return sum + (Number(product?.cost_price) || 0) * (Number(tp.quantity) || 1);
+    }, 0);
+
+    // Service costs: cost × quantity
+    const serviceCost = (ticketServicesData || []).reduce((sum: number, ts: any) => {
+      if (!ticketIds.includes(ts.ticket_id)) return sum;
+      const service = (servicesData || []).find((s: any) => s.id === ts.service_id);
+      return sum + (Number(service?.cost) || 0) * (Number(ts.quantity) || 1);
+    }, 0);
+
+    // Commissions
+    const commissionCost = (commissionsData || []).reduce((sum: number, c: any) => {
+      if (!ticketIds.includes(c.ticket_id)) return sum;
+      return sum + (Number(c.amount) || 0);
+    }, 0);
+
+    return productCost + serviceCost + commissionCost;
+  };
 
   const stats = (() => {
     if (isLoading) return undefined;
@@ -43,16 +72,19 @@ export function Finance() {
     const tickets = ticketsData || [];
     const completedTickets = tickets.filter((t: any) => t.status === 'completed');
 
-    // Bug #8 fix: filter by completed_at (with fallback) for accurate daily/monthly reporting
     const getTicketDate = (t: any) => new Date(t.completed_at || t.updated_at || t.created_at).getTime();
 
     const ticketsToday = completedTickets.filter((t: any) => getTicketDate(t) >= today.getTime());
     const ticketsMonth = completedTickets.filter((t: any) => getTicketDate(t) >= firstDayOfMonth.getTime());
 
-    // Bug #1 fix: use paid_amount (actual cash) not total_amount (includes unpaid credit)
+    // Revenue = paid_amount
     const daily_revenue = ticketsToday.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
     const monthly_revenue = ticketsMonth.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
     const total_revenue = completedTickets.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
+
+    // Costs = product costs + service costs + commissions
+    const daily_costs = computeCosts(ticketsToday.map((t: any) => t.id));
+    const monthly_costs = computeCosts(ticketsMonth.map((t: any) => t.id));
 
     const debts = debtsData || [];
     const pending_debts = debts
@@ -63,7 +95,7 @@ export function Finance() {
     const supplier_debts = suppliers.reduce((sum: number, s: any) => sum + (s.balance_owed || 0), 0);
 
     const employees = employeesData || [];
-    const employee_commissions = employees
+    const pending_commissions = employees
       .filter((e: any) => e.active !== false)
       .reduce((sum: number, e: any) => sum + (e.pending_commissions || 0), 0);
 
@@ -71,9 +103,13 @@ export function Finance() {
       daily_revenue,
       monthly_revenue,
       total_revenue,
+      daily_profit: daily_revenue - daily_costs,
+      monthly_profit: monthly_revenue - monthly_costs,
+      daily_costs,
+      monthly_costs,
       pending_debts,
       supplier_debts,
-      employee_commissions,
+      pending_commissions,
       tickets_today: ticketsToday.length,
       tickets_month: ticketsMonth.length
     };
@@ -102,13 +138,14 @@ export function Finance() {
       });
 
       const completedDayTickets = dayTickets.filter((t: any) => t.status === 'completed');
+      const dayRevenue = completedDayTickets.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0);
+      const dayCosts = computeCosts(completedDayTickets.map((t: any) => t.id));
 
       result.push({
         date: d.toISOString(),
         ticket_count: dayTickets.length,
-        gross_revenue: completedDayTickets.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0),
-        // Bug #1 fix: collected = paid_amount only
-        collected_amount: completedDayTickets.reduce((sum: number, t: any) => sum + (t.paid_amount || 0), 0)
+        gross_revenue: dayRevenue,
+        collected_amount: dayRevenue - dayCosts // net profit per day
       });
     }
 
@@ -161,15 +198,14 @@ export function Finance() {
           suffix="DA"
           icon={TrendingUp}
           color="success"
-          trend="+12%"
         />
 
         <StatCard
-          title={t('finance.ticketsCompleted')}
-          value={stats?.tickets_today.toString() || '0'}
-          suffix={t('finance.tickets')}
-          icon={Calendar}
-          color="primary"
+          title="Bénéfice Quotidien"
+          value={(stats?.daily_profit || 0).toLocaleString()}
+          suffix="DA"
+          icon={TrendingUp}
+          color={stats && stats.daily_profit >= 0 ? 'success' : 'danger'}
         />
 
         <StatCard
@@ -178,7 +214,6 @@ export function Finance() {
           suffix="DA"
           icon={Users}
           color="warning"
-          trend="-5%"
           trendDown
         />
 
@@ -198,7 +233,7 @@ export function Finance() {
             <div>
               <p className="text-sm font-bold text-[var(--text-secondary)] uppercase tracking-wider">{t('employee.pendingCommissions')}</p>
               <p className="text-2xl font-black text-white mt-1">
-                {stats?.employee_commissions.toLocaleString() || '0'} <span className="text-lg opacity-50 font-medium">DA</span>
+                {(stats?.pending_commissions || 0).toLocaleString()} <span className="text-lg opacity-50 font-medium">DA</span>
               </p>
             </div>
             <div className="w-12 h-12 bg-primary-500/10 border border-primary-500/20 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -206,12 +241,25 @@ export function Finance() {
             </div>
           </div>
         </Card>
+        <Card className="p-5 bg-[var(--bg-surface)] border-[var(--border)] group hover:border-warning-500/30 transition-all">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-[var(--text-secondary)] uppercase tracking-wider">Coûts du Mois</p>
+              <p className="text-2xl font-black text-warning-400 mt-1">
+                {(stats?.monthly_costs || 0).toLocaleString()} <span className="text-lg opacity-50 font-medium">DA</span>
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-warning-500/10 border border-warning-500/20 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+              <TrendingDown className="w-6 h-6 text-warning-400" />
+            </div>
+          </div>
+        </Card>
         <Card className="p-5 bg-[var(--bg-surface)] border-[var(--border)] group hover:border-success-500/30 transition-all">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-bold text-[var(--text-secondary)] uppercase tracking-wider">{t('finance.netProfit')}</p>
-              <p className="text-2xl font-black text-success-400 mt-1">
-                {stats ? ((stats.daily_revenue - stats.employee_commissions) || 0).toLocaleString() : '0'} <span className="text-lg opacity-50 font-medium">DA</span>
+              <p className="text-sm font-bold text-[var(--text-secondary)] uppercase tracking-wider">{t('finance.netProfit')} (Mois)</p>
+              <p className={`text-2xl font-black mt-1 ${stats && stats.monthly_profit >= 0 ? 'text-success-400' : 'text-danger-400'}`}>
+                {(stats?.monthly_profit || 0).toLocaleString()} <span className="text-lg opacity-50 font-medium">DA</span>
               </p>
             </div>
             <div className="w-12 h-12 bg-success-500/10 border border-success-500/20 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -235,18 +283,29 @@ export function Finance() {
                   <div className="flex items-end justify-between h-full gap-2">
                     {dailyRevenue.map((day, index) => {
                       const maxValue = Math.max(...dailyRevenue.map(d => d.gross_revenue));
-                      const height = maxValue > 0 ? (day.gross_revenue / maxValue) * 100 : 0;
+                      const heightRev = maxValue > 0 ? (day.gross_revenue / maxValue) * 100 : 0;
+                      const heightProfit = maxValue > 0 ? (Math.max(0, day.collected_amount) / maxValue) * 100 : 0;
 
                       return (
                         <div key={index} className="flex-1 flex flex-col items-center gap-2 group relative">
                           {/* Tooltip */}
-                          <div className="opacity-0 group-hover:opacity-100 absolute -top-10 bg-[var(--bg-surface)] border border-[var(--border-lg)] px-2 py-1 rounded text-xs font-bold text-white shadow-xl transition-opacity pointer-events-none whitespace-nowrap z-10">
-                            {day.gross_revenue.toLocaleString()} DA
+                          <div className="opacity-0 group-hover:opacity-100 absolute -top-14 bg-[var(--bg-surface)] border border-[var(--border-lg)] px-2 py-1.5 rounded text-xs font-bold text-white shadow-xl transition-opacity pointer-events-none whitespace-nowrap z-10 space-y-0.5">
+                            <div className="text-success-400">💰 Rev: {day.gross_revenue.toLocaleString()} DA</div>
+                            <div className={day.collected_amount >= 0 ? 'text-emerald-400' : 'text-danger-400'}>
+                              📈 Bénéf: {day.collected_amount.toLocaleString()} DA
+                            </div>
                           </div>
-                          <div
-                            className="w-full bg-primary-500/80 rounded-t transition-all group-hover:bg-primary-500 cursor-pointer"
-                            style={{ height: `${height}%`, minHeight: '4px' }}
-                          />
+                          {/* Two bars: revenue (blue) + profit (green) */}
+                          <div className="w-full flex gap-0.5 items-end">
+                            <div
+                              className="flex-1 bg-primary-500/70 rounded-t transition-all group-hover:bg-primary-500"
+                              style={{ height: `${heightRev * 2}px`, minHeight: '4px' }}
+                            />
+                            <div
+                              className={`flex-1 rounded-t transition-all ${day.collected_amount >= 0 ? 'bg-emerald-500/70 group-hover:bg-emerald-500' : 'bg-danger-500/70 group-hover:bg-danger-500'}`}
+                              style={{ height: `${heightProfit * 2}px`, minHeight: '4px' }}
+                            />
+                          </div>
                           <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] transform -rotate-45 origin-top-left whitespace-nowrap pt-2">
                             {new Date(day.date).toLocaleDateString(undefined, {
                               day: 'numeric',
