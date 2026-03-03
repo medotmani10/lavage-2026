@@ -147,7 +147,6 @@ export async function pullChanges() {
 // Helper to queue an operation to run locally and eventually push to Supabase
 // (Now online-first: tries Supabase immediately, falls back to queue if offline or failed)
 export async function queueOperation(table: string, operation: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) {
-    let successOnline = false;
 
     if (navigator.onLine) {
         try {
@@ -161,38 +160,15 @@ export async function queueOperation(table: string, operation: 'INSERT' | 'UPDAT
                 const { error } = await supabase.from(table as any).delete().eq('id', payload.id);
                 if (error) throw error;
             }
-            successOnline = true;
+
+            // Notify components to fetch the new fresh real data directly from Supabase
+            window.dispatchEvent(new CustomEvent('dexie-sync-update'));
         } catch (e) {
-            console.warn('Online sync failed, falling back to offline queue', e);
+            console.error('Online Supabase operation failed:', e);
+            throw e; // Give feedback to UI instead of silently queuing
         }
-    }
-
-    // Update local cache regardless so the UI feels instant
-    try {
-        if (operation === 'INSERT' || operation === 'UPDATE') {
-            await (db as any)[table].put(payload);
-        } else if (operation === 'DELETE') {
-            await (db as any)[table].delete(payload.id);
-        }
-        // Notify React components to re-fetch from Dexie immediately
-        window.dispatchEvent(new CustomEvent('dexie-sync-update'));
-    } catch (e) {
-        console.error("Local Dexie operation error:", e);
-    }
-
-    // Only queue if it failed online
-    if (!successOnline) {
-        await db.sync_queue.add({
-            table,
-            operation,
-            payload,
-            created_at: new Date().toISOString()
-        });
-
-        // Try background sync just in case navigator.onLine was wrong
-        if (navigator.onLine) {
-            pushChanges().catch(console.error);
-        }
+    } else {
+        throw new Error("Impossible d'enregistrer: Aucune connexion Internet.");
     }
 }
 

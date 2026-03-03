@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { db } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { queueOperation } from '../lib/sync';
 import type { QueueTicket, TicketStatus } from '../types';
@@ -40,100 +39,37 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // 1. First, load whatever is in Dexie immediately so the UI feels instant
-      let localTickets = await db.queue_tickets.orderBy('created_at').toArray();
-      if (status && status.length > 0) {
-        localTickets = localTickets.filter(t => status.includes(t.status));
+      if (!navigator.onLine) {
+        throw new Error("Impossible de charger les tickets: Aucune connexion Internet.");
       }
 
-      // Resolve relations manually for local view
-      let resolvedTickets: any[] = await Promise.all(localTickets.map(async (t) => {
-        let customer = null;
-        if (t.customer_id) {
-          customer = await db.customers.get(t.customer_id).catch(() => null);
-        }
+      let query = supabase
+        .from('queue_tickets')
+        .select(`
+          *,
+          customer:customers(id, full_name, phone, email),
+          vehicle:vehicles(id, plate_number, brand, model, year),
+          employee:employees(id, position, user:users(full_name))
+        `)
+        .order('created_at', { ascending: true });
 
-        let vehicle = null;
-        if (t.vehicle_id && t.vehicle_id !== t.customer_id) {
-          vehicle = await db.vehicles.get(t.vehicle_id).catch(() => null);
-        }
+      if (status && status.length > 0) {
+        query = query.in('status', status);
+      }
 
-        const employee = t.assigned_employee_id ? await db.employees.get(t.assigned_employee_id).catch(() => null) : null;
+      const { data, error } = await query;
+      if (error) throw error;
 
-        return {
-          ...t,
-          customer: customer ? {
-            id: customer.id,
-            full_name: customer.full_name,
-            phone: customer.phone,
-            email: customer.email
-          } : { full_name: 'Client Kiosque' },
-          vehicle: vehicle ? {
-            id: vehicle.id,
-            plate_number: vehicle.plate_number,
-            brand: vehicle.brand,
-            model: vehicle.model,
-            year: vehicle.year
-          } : { plate_number: 'N/A' },
-          employee: employee ? {
-            id: employee.id,
-            position: employee.position,
-            user: { full_name: (employee as any).user?.full_name || 'Inconnu' }
-          } : null
-        };
-      }));
-
-      // Immediately set the state with local tickets
-      set({ tickets: resolvedTickets, isLoading: navigator.onLine }); // keep loading state if we are going to fetch
-
-      // 2. Fetch from Supabase in background if online
-      if (navigator.onLine) {
-        try {
-          let query = supabase
-            .from('queue_tickets')
-            .select(`
-              *,
-              customer:customers(id, full_name, phone, email),
-              vehicle:vehicles(id, plate_number, brand, model, year),
-              employee:employees(id, position, user:users(full_name))
-            `)
-            .order('created_at', { ascending: true });
-
-          if (status && status.length > 0) {
-            query = query.in('status', status);
-          }
-
-          const { data, error } = await query;
-          if (error) throw error;
-
-          if (data && data.length > 0) {
-            const supaResolved = data as any[];
-
-            // Cache back to dexie
-            const plainTickets = data.map((t: any) => {
-              const { customer, vehicle, employee, ...rest } = t;
-              return rest;
-            });
-            await db.queue_tickets.bulkPut(plainTickets as any).catch(console.error);
-
-            // Since we fetched fresh relations from Supabase, we can use them directly
-            // but we also need to include our locally created tickets that aren't on Supabase
-            // Merge strategy: if local ticket id is not in Supabase, keep it.
-            const supaIds = new Set(supaResolved.map(t => t.id));
-            const localOnly = resolvedTickets.filter(t => !supaIds.has(t.id));
-
-            set({ tickets: [...localOnly, ...supaResolved].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()), isLoading: false });
-          } else {
-            set({ isLoading: false });
-          }
-        } catch (e) {
-          console.warn("Supabase fetch failed in queueStore", e);
-          set({ isLoading: false });
-        }
+      if (data && data.length > 0) {
+        const supaResolved = data as any[];
+        set({ tickets: supaResolved.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()), isLoading: false });
+      } else {
+        set({ tickets: [], isLoading: false });
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch tickets';
-      set({ error: errorMessage, isLoading: false });
+      console.error("fetchTickets error:", error);
+      set({ error: errorMessage, isLoading: false, tickets: [] });
     }
   },
 
@@ -156,13 +92,14 @@ export const useQueueStore = create<QueueState>((set, get) => ({
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Bug #5 fix: Use MAX existing ticket number, not COUNT (count causes duplicates when cache is partial)
-      const allToday = await db.queue_tickets
-        .filter(t => new Date(t.created_at) >= today && t.requested_service === ticketData.requested_service)
-        .toArray();
+      const { data: allToday } = await supabase
+        .from('queue_tickets')
+        .select('*')
+        .gte('created_at', today.toISOString())
+        .eq('requested_service', ticketData.requested_service);
 
       const prefix = ticketData.requested_service === 'lavage' ? 'L' : ticketData.requested_service === 'vidange' ? 'V' : 'P';
-      const maxNum = allToday.reduce((max, t) => {
+      const maxNum = (allToday || []).reduce((max: number, t: any) => {
         const num = parseInt((t.ticket_number || '').replace(/[^0-9]/g, '') || '0', 10);
         return Math.max(max, num);
       }, 0);
@@ -212,8 +149,8 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const ticket = await db.queue_tickets.get(ticketId);
-      if (!ticket) throw new Error("Ticket introuvable");
+      const { data: ticket, error: ticketError } = await supabase.from('queue_tickets').select('*').eq('id', ticketId).single();
+      if (!ticket || ticketError) throw new Error("Ticket introuvable");
 
       const updateData: any = { status };
 
@@ -225,7 +162,7 @@ export const useQueueStore = create<QueueState>((set, get) => ({
         updateData.cancelled_at = new Date().toISOString();
       }
 
-      const newTicket = { ...ticket, ...updateData };
+      const newTicket = { ...(ticket as any), ...updateData };
       await queueOperation('queue_tickets', 'UPDATE', newTicket);
 
       // Refresh tickets list
@@ -242,10 +179,10 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const ticket = await db.queue_tickets.get(ticketId);
-      if (!ticket) throw new Error("Ticket introuvable");
+      const { data: ticket, error: ticketError } = await supabase.from('queue_tickets').select('*').eq('id', ticketId).single();
+      if (!ticket || ticketError) throw new Error("Ticket introuvable");
 
-      const newTicket = { ...ticket, assigned_employee_id: employeeId };
+      const newTicket = { ...(ticket as any), assigned_employee_id: employeeId };
       await queueOperation('queue_tickets', 'UPDATE', newTicket);
 
       // Refresh tickets list

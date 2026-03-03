@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { db } from '../lib/db';
 
 export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
     const [data, setData] = useState<T[]>(defaultData);
@@ -17,13 +16,6 @@ export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
             setError(null);
 
             try {
-                // 1. Immediately load whatever is in Dexie for an instant UI update
-                if ((db as any)[tableName]) {
-                    const localData = await (db as any)[tableName].toArray();
-                    if (mounted) setData(localData);
-                }
-
-                // 2. Fetch fresh data from Supabase in the background
                 if (navigator.onLine) {
                     setIsOffline(false);
                     const { data: supaData, error: supaError } = await supabase.from(tableName).select('*');
@@ -33,26 +25,17 @@ export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
                     }
 
                     if (mounted && supaData) {
-                        // 3. Upsert fresh data into Dexie
-                        if ((db as any)[tableName]) {
-                            await (db as any)[tableName].bulkPut(supaData);
-                            // 4. Reload from Dexie so we get a merged view of local (unsynced) + remote data
-                            const mergedData = await (db as any)[tableName].toArray();
-                            if (mounted) setData(mergedData);
-                        } else {
-                            // Fallback if no Dexie table config (unlikely)
-                            if (mounted) setData(supaData as T[]);
-                        }
+                        setData(supaData as T[]);
                     }
                 } else {
                     setIsOffline(true);
+                    throw new Error("Offline, unable to fetch from Supabase");
                 }
             } catch (err: any) {
                 console.error(`Error fetching data for ${tableName}:`, err);
                 if (mounted) {
                     setError(err);
                     setIsOffline(true);
-                    // Just rely on the Dexie data we fetched in step 1
                 }
             } finally {
                 if (mounted) setIsLoading(false);
@@ -61,17 +44,10 @@ export function useSupabaseData<T>(tableName: string, defaultData: T[] = []) {
 
         fetchData();
 
-        // Listen for realtime or local updates to trigger a fast re-fetch from local Dexie cache
+        // Listen for realtime updates from Supabase realtime, ignore local Dexie syncs
         const handleSyncUpdate = async () => {
             if (!mounted) return;
-            // Since `queueOperation` and Supabase realtime put the fresh data inside Dexie,
-            // we can just read from the local cache to update the UI instantly without a network request.
-            if ((db as any)[tableName]) {
-                const localData = await (db as any)[tableName].toArray();
-                if (mounted) setData(localData);
-            } else {
-                fetchData();
-            }
+            fetchData();
         };
 
         const handleOffline = () => { if (mounted) setIsOffline(true); };
