@@ -184,7 +184,17 @@ function CustomerCard({ customer, onEdit, onDelete, onClick, onManageVehicles, o
             </div>
             <div>
               <h3 className="font-bold text-white group-hover:text-primary-400 transition-colors">{customer.full_name}</h3>
-              <p className="text-xs text-[var(--text-muted)] font-mono mt-0.5">{customer.phone}</p>
+              {customer.phone ? (
+                <a
+                  href={`tel:${customer.phone.replace(/\s+/g, '')}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs text-[var(--text-muted)] font-mono mt-0.5 hover:text-primary-400 hover:underline transition-colors block"
+                >
+                  {customer.phone}
+                </a>
+              ) : (
+                <p className="text-xs text-[var(--text-muted)] font-mono mt-0.5">N/A</p>
+              )}
             </div>
           </div>
 

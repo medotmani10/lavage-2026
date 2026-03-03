@@ -203,10 +203,14 @@ function SupplierCard({ supplier, onEdit, onDelete, onPay }: SupplierCardProps) 
       </div>
 
       <div className="space-y-2.5 text-sm mb-4">
-        <div className="flex items-center gap-2.5 text-[var(--text-secondary)] font-medium p-2 bg-[var(--bg-base)] rounded-lg border border-[var(--border)]">
+        <a
+          href={`tel:${supplier.phone.replace(/\s+/g, '')}`}
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-2.5 text-[var(--text-secondary)] font-medium p-2 bg-[var(--bg-base)] rounded-lg border border-[var(--border)] hover:border-primary-500/50 hover:text-primary-400 transition-colors"
+        >
           <Phone className="w-4 h-4 text-primary-400 shrink-0" />
           <span>{supplier.phone}</span>
-        </div>
+        </a>
         {supplier.email && (
           <div className="flex items-center gap-2.5 text-[var(--text-secondary)] font-medium p-2 bg-[var(--bg-base)] rounded-lg border border-[var(--border)]">
             <Mail className="w-4 h-4 text-primary-400 shrink-0" />
